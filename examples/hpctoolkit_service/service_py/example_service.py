@@ -5,26 +5,23 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 """An example CompilerGym service in python."""
-from bdb import set_trace
 import logging
 import os
 import pdb
 import pickle
 import shutil
 import subprocess
+from bdb import set_trace
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 import hatchet as ht
 import numpy as np
-import utils
-import pandas as pd
-
 import programl as pg
-
-
+import utils
 
 import compiler_gym.third_party.llvm as llvm
+from compiler_gym import site_data_path
 from compiler_gym.service import CompilationSession
 from compiler_gym.service.proto import (
     Action,
@@ -40,9 +37,6 @@ from compiler_gym.service.proto import (
 )
 from compiler_gym.service.runtime import create_and_run_compiler_gym_service
 from compiler_gym.util.commands import run_command
-
-
-
 
 
 class HPCToolkitCompilationSession(CompilationSession):
@@ -80,7 +74,7 @@ class HPCToolkitCompilationSession(CompilationSession):
             default_value=Observation(
                 scalar_double=0,
             ),
-        ),        
+        ),
         ObservationSpace(
             name="hpctoolkit",
             binary_size_range=ScalarRange(
@@ -92,13 +86,13 @@ class HPCToolkitCompilationSession(CompilationSession):
             binary_size_range=ScalarRange(
                 min=ScalarLimit(value=0), max=ScalarLimit(value=1e5)
             ),
-        ),         
+        ),
         ObservationSpace(
             name="programl_hpctoolkit",
             binary_size_range=ScalarRange(
                 min=ScalarLimit(value=0), max=ScalarLimit(value=1e5)
             ),
-        ),       
+        ),
     ]
 
     def __init__(
@@ -115,6 +109,7 @@ class HPCToolkitCompilationSession(CompilationSession):
 
         # Resolve the paths to LLVM binaries once now.
         self._clang = str(llvm.clang_path())
+        self._llvm_dis = str(llvm.llvm_dis_path())
         self._llc = str(llvm.llc_path())
         self._llvm_diff = str(llvm.llvm_diff_path())
         self._opt = str(llvm.opt_path())
@@ -122,57 +117,69 @@ class HPCToolkitCompilationSession(CompilationSession):
         self._llvm_path = str(self.working_dir / "benchmark.ll")
         self._llvm_before_path = str(self.working_dir / "benchmark.previous.ll")
         self._bc_path = str(self.working_dir / "benchmark.bc")
+        self._bc_download_path = str(self.working_dir / "benchmark-downloaded.bc")
         self._exe_path = str(self.working_dir / "benchmark.exe")
         self._exe_struct_path = self._exe_path + ".hpcstruct"
 
+        # Set run commands
+        self._run_exe = [self._exe_path]
+
         # List of metrics collected from observation space
-        self._features_hpcrun = ['REALTIME@100'] # TODO: Use this in hpcrun command
-        self._features_hatchet = ['REALTIME (sec) (I)','REALTIME (sec) (E)'] # TODO: Use this from hatchat dataframe
+        self._features_hpcrun = [
+            "-e",
+            "REALTIME@100",
+        ]  # TODO: Use this in hpcrun command
+        self._features_hatchet = [
+            "REALTIME (sec) (I)",
+            "REALTIME (sec) (E)",
+        ]  # TODO: Use this from hatchat dataframe
 
         # Dump the benchmark source to disk.
         self._src_path = str(self.working_dir / "benchmark.c")
-        with open(self.working_dir / "benchmark.c", "wb") as f:
+        with open(self._src_path, "wb") as f:
             f.write(benchmark.program.contents)
 
 
-        # Set run commands
-        self._run_c = [self._exe_path]
 
         # Set compile commands
         if action_space.name == "llvm":
-            self.compile_c = [
-                [self._clang,"-o", self._llvm_path, "-S", "-emit-llvm", self._src_path],
-                [self._opt, "--debugify", "-o", self._bc_path, self._llvm_path],
+            compile_to_ll = [
+                self._clang,
+                "-o",
+                self._llvm_path,
+                "-S",
+                "-emit-llvm",
+                self._src_path,
+            ]
+
+            # Optimization must go on position: self.optimize_and_save_ll[0][1]
+            self.optimize_and_save_ll = [
+                [self._opt, "-O0", "--debugify", "-o", self._bc_path, self._llvm_path],
                 [self._clang, self._bc_path, "-o", self._exe_path],
+                [self._llvm_dis, "-o", self._llvm_path, self._bc_path]
             ]
 
-            self.compile_c_base = self.compile_c[:]
-            self.compile_c_base[0].insert(1, "-O0")
-
-        elif action_space.name == "gcc":
-            self.compile_c = [
-                ["gcc", "-g", "-o", self._exe_path, self._src_path]
-            ]
-            self.compile_c_base = self.compile_c[:]
-            self.compile_c_base.insert(1, "-O0")
         else:
             print("Action space is doesn't exits: ", action_space)
             exit
 
 
+        # Transform input code representation to ll format
+        run_command(
+            compile_to_ll,
+            timeout=30,
+        )
+
         # Compile baseline at the beginning
-        for cmd in self.compile_c_base:            
+        for cmd in self.optimize_and_save_ll:
             run_command(
                 cmd,
                 timeout=30,
             )
-            
 
-        print(self.compile_c)
 
         print("\n", self.working_dir, "\n")
         pdb.set_trace()
-
 
     def apply_action(self, action: Action) -> Tuple[bool, Optional[ActionSpace], bool]:
 
@@ -185,7 +192,6 @@ class HPCToolkitCompilationSession(CompilationSession):
         if choice_index < 0 or choice_index >= num_choices:
             raise ValueError("Out-of-range")
 
-
         # Compile benchmark with given optimization
         opt = self._action_space.choice[0].named_discrete_space.value[choice_index]
         logging.info(
@@ -194,8 +200,8 @@ class HPCToolkitCompilationSession(CompilationSession):
             opt,
         )
 
-        self.compile_c[0].insert(1, opt)
-        for cmd in self.compile_c:
+        self.optimize_and_save_ll[0][1] = opt
+        for cmd in self.optimize_and_save_ll:
             run_command(
                 cmd,
                 timeout=30,
@@ -207,13 +213,11 @@ class HPCToolkitCompilationSession(CompilationSession):
         new_action_space = None
         return (end_of_session, new_action_space, action_had_no_effect)
 
-
-
     def get_observation(self, observation_space: ObservationSpace) -> Observation:
         logging.info("Computing observation from space %s", observation_space.name)
 
         if observation_space.name == "runtime":
-            print("get_observation: runtime")            
+            print("get_observation: runtime")
             avg_exec_time = self.runtime_get_average()
             return Observation(scalar_double=avg_exec_time)
 
@@ -232,15 +236,10 @@ class HPCToolkitCompilationSession(CompilationSession):
         elif observation_space.name == "programl_hpctoolkit":
             print("get_observation: programl_hpctoolkit")
             g_hatchet = self.hatchet_get_graph()
-            print('Hatchet runtime = ', g_hatchet.dataframe['REALTIME (sec) (I)'][0])
             g_programl = self.programl_get_graph(self._llvm_path)
-            
-            # DEBUG
-            # g_hatchet.dataframe.to_csv( self.working_dir / "hatchet.csv", index=False)
-            # df_programl = pd.DataFrame.from_dict(dict(g_programl.nodes(data=True)), orient='index')
-            # df_programl.to_csv( self.working_dir / "programl.csv", index=False)
-
-            g_programl = self.programl_add_features(g_programl, g_hatchet, self._features_hatchet)
+            g_programl = self.programl_add_features(
+                g_programl, g_hatchet, self._features_hatchet
+            )
             pickled = pickle.dumps(g_programl)
             return Observation(binary_value=pickled)
 
@@ -250,7 +249,7 @@ class HPCToolkitCompilationSession(CompilationSession):
     ##########################################################################
     # Observation functions
     ##########################################################################
-    
+
     def runtime_get_average(self) -> float:
 
         # TODO: add documentation that benchmarks need print out execution time
@@ -258,7 +257,7 @@ class HPCToolkitCompilationSession(CompilationSession):
         exec_times = []
         for _ in range(5):
             stdout = run_command(
-                self._run_c,
+                self._run_exe,
                 timeout=30,
             )
             print(stdout)
@@ -275,15 +274,37 @@ class HPCToolkitCompilationSession(CompilationSession):
         avg_exec_time = np.mean(exec_times[1:4])
         return avg_exec_time
 
-
     def hatchet_get_graph(self) -> ht.GraphFrame:
         hpctoolkit_cmd = [
-            ["rm", "-rf", self._exe_struct_path, self.working_dir/"m", self.working_dir/"db"],
-            ["hpcrun", "-e", "REALTIME@100","-t", "-o", self.working_dir/"m", self._exe_path],
+            [
+                "rm",
+                "-rf",
+                self._exe_struct_path,
+                self.working_dir / "m",
+                self.working_dir / "db",
+            ],
+            [
+                "hpcrun",
+                "-e",
+                "REALTIME@100",
+                "-t",
+                "-o",
+                self.working_dir / "m",
+                self._exe_path,
+            ],
             ["hpcstruct", "-o", self._exe_struct_path, self._exe_path],
-            ["hpcprof-mpi", "-o", self.working_dir/"db", "--metric-db", "yes", "-S", self._exe_struct_path, self.working_dir/"m"]
+            [
+                "hpcprof-mpi",
+                "-o",
+                self.working_dir / "db",
+                "--metric-db",
+                "yes",
+                "-S",
+                self._exe_struct_path,
+                self.working_dir / "m",
+            ],
         ]
-        
+
         for cmd in hpctoolkit_cmd:
             print(cmd)
 
@@ -291,22 +312,20 @@ class HPCToolkitCompilationSession(CompilationSession):
                 cmd,
                 timeout=30,
             )
-        
-        g_hatchet = ht.GraphFrame.from_hpctoolkit(str(self.working_dir/"db"))
+
+        g_hatchet = ht.GraphFrame.from_hpctoolkit(str(self.working_dir / "db"))
         self.addInstStrToDataframe(g_hatchet, self._llvm_path)
 
         return g_hatchet
 
-
-    def programl_get_graph(self, ll_path: str)-> pg.ProgramGraph:
+    def programl_get_graph(self, ll_path: str) -> pg.ProgramGraph:
 
         with open(ll_path, "r") as f:
             code_str = f.read().rstrip()
-            g_programl = pg.from_llvm_ir(code_str) 
+            g_programl = pg.from_llvm_ir(code_str)
             g_programl = pg.to_networkx(g_programl)
-            
-        return g_programl
 
+        return g_programl
 
     ##########################################################################
     # Auxilary functions
@@ -318,16 +337,14 @@ class HPCToolkitCompilationSession(CompilationSession):
 
         with open(ll_path) as f:
             for line in f.readlines():
-                if line[0:2] == '  ' and line[2] != ' ':
+                if line[0:2] == "  " and line[2] != " ":
                     # print(len(inst_list), str(line))
-                    inst_list.append(str(line[2:-1])) # strip '  ' and '\n' at the end   
+                    inst_list.append(str(line[2:-1]))  # strip '  ' and '\n' at the end
         return inst_list
-
-
 
     def addInstStrToDataframe(self, g_hatchet: ht.GraphFrame, ll_path: str) -> None:
 
-        inst_list = self.extractInstStr(ll_path)  
+        inst_list = self.extractInstStr(ll_path)
 
         g_hatchet.dataframe["llvm_ins"] = ""
 
@@ -335,42 +352,43 @@ class HPCToolkitCompilationSession(CompilationSession):
             if inst_idx < len(inst_list):
                 g_hatchet.dataframe["llvm_ins"][i] = inst_list[inst_idx]
 
+    def programl_add_features(
+        self, g_programl: pg.ProgramGraph, g_hatchet: ht.GraphFrame, feature_names: list
+    ) -> pg.ProgramGraph:
 
-
-    def programl_add_features(self, g_programl: pg.ProgramGraph, 
-                            g_hatchet: ht.GraphFrame, 
-                            feature_names: list) -> pg.ProgramGraph:
-
-
-        df = g_hatchet.dataframe.sort_values(by=['line'])
+        df = g_hatchet.dataframe.sort_values(by=["line"])
 
         # The node 0 carries the information about <program root>
-        hatchet_root = df[df['name'] == '<program root>']
-        g_programl.nodes[0]['features'] = {'dynamic': [ sum(hatchet_root[fn]) for fn in feature_names ] }
-
+        hatchet_root = df[df["name"] == "<program root>"]
+        g_programl.nodes[0]["features"] = {
+            "dynamic": [sum(hatchet_root[fn]) for fn in feature_names]
+        }
 
         ins_line = 1
         for n_id in list(g_programl.nodes())[1:]:
             node = g_programl.nodes[n_id]
 
-            if node['type'] == 0 and 'features' in node: # instruction
-                hatchet_row = df[df['line'] == ins_line] # if there is multiple sum them
-                ins_line += 1            
-                
+            if node["type"] == 0 and "features" in node:  # instruction
+                hatchet_row = df[
+                    df["line"] == ins_line
+                ]  # if there is multiple sum them
+                ins_line += 1
+
                 if hatchet_row.empty == True:
-                    node['features']['dynamic'] = [ 0 ] * len(feature_names)
+                    node["features"]["dynamic"] = [0] * len(feature_names)
                 else:
-                    node['features']['dynamic'] = [ sum(hatchet_row[fn]) for fn in feature_names ]
-                    
+                    node["features"]["dynamic"] = [
+                        sum(hatchet_row[fn]) for fn in feature_names
+                    ]
 
                     # Assert with pdb.set_trace()
-                    if hatchet_row['llvm_ins'][0] != node['features']['full_text'][0]:
-                        print('hatchat llvm_ins different from programl llvm_ins')
+                    if hatchet_row["llvm_ins"][0] != node["features"]["full_text"][0]:
+                        print("hatchat llvm_ins different from programl llvm_ins")
                         pdb.set_trace()
-                        print(hatchet_row['llvm_ins'], node['features']['full_text'][0])                
+                        print(hatchet_row["llvm_ins"], node["features"]["full_text"][0])
 
                 # print(node['features']['dynamic'])
-        
+
         return g_programl
 
 

@@ -19,8 +19,14 @@ from typing import Iterable
 
 import gym
 import hatchet as ht
+import pandas as pd
 
-from compiler_gym.datasets import Benchmark, Dataset
+from compiler_gym.datasets import Benchmark, Dataset  # , BenchmarkUri
+from compiler_gym.envs.llvm.datasets import (
+    CBenchDataset,
+    CBenchLegacyDataset,
+    CBenchLegacyDataset2,
+)
 from compiler_gym.envs.llvm.llvm_benchmark import get_system_includes
 from compiler_gym.spaces import Reward
 from compiler_gym.third_party import llvm
@@ -28,7 +34,9 @@ from compiler_gym.util.logging import init_logging
 from compiler_gym.util.registration import register
 from compiler_gym.util.runfiles_path import runfiles_path, site_data_path
 
-collected_metrics = ['REALTIME (sec) (I)','REALTIME (sec) (E)']
+pd.set_option("display.max_columns", None)
+
+collected_metrics = ["REALTIME (sec) (I)", "REALTIME (sec) (E)"]
 
 
 HPCTOOLKIT_PY_SERVICE_BINARY: Path = Path(
@@ -67,18 +75,18 @@ class ProgramlHPCToolkitReward(Reward):
         del benchmark  # unused
         unpickled_cct = observation_view["programl_hpctoolkit"]
         g = pickle.loads(unpickled_cct)
-        self.baseline_runtime = g.nodes[0]['features']['dynamic'][0]
+        self.baseline_runtime = g.nodes[0]["features"]["dynamic"][0]
 
     def update(self, action, observations, observation_view):
         print("Reward ProgramlHPCToolkit: update")
         del action
         del observation_view
         g = pickle.loads(observations[0])
-        new_runtime = g.nodes[0]['features']['dynamic'][0] # nodes[0] is root, get features, dynamic = ['REALTIME (sec) (I)','REALTIME (sec) (E)']
+        new_runtime = g.nodes[0]["features"]["dynamic"][
+            0
+        ]  # nodes[0] is root, get features, dynamic = ['REALTIME (sec) (I)','REALTIME (sec) (E)']
 
         return float(self.baseline_runtime - new_runtime) / self.baseline_runtime
-
-
 
 
 class HPCToolkitDataset(Dataset):
@@ -137,7 +145,7 @@ class HPCToolkitDataset(Dataset):
 
     # def benchmark_from_parsed_uri(self, uri: BenchmarkUri) -> Benchmark:
     #     # TODO: IMPORTANT
-    #     return self.benchmark(str(uri))            
+    #     return self.benchmark(str(uri))
 
 
 # Register the environment for use with gym.make(...).
@@ -147,6 +155,7 @@ register(
     kwargs={
         "service": HPCTOOLKIT_PY_SERVICE_BINARY,
         "rewards": [ProgramlHPCToolkitReward()],
+        # "datasets": [HPCToolkitDataset(), CBenchLegacyDataset2(site_data_path("llvm-v0"))],
         "datasets": [HPCToolkitDataset()],
     },
 )
@@ -162,21 +171,26 @@ def main():
         env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/conv2d")
         # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/nanosleep")
 
+        # env.reset(benchmark="benchmark://cbench-v1/qsort")
+
         for i in range(2):
             print("Main: step = ", i)
             observation, reward, done, info = env.step(
-                action=3,#env.action_space.sample(),
+                action=env.action_space.sample(),
                 observations=["programl_hpctoolkit"],
                 rewards=["programl_hpctoolkit"],
             )
             print(reward)
             print(info)
             g = pickle.loads(observation[0])
-            
-            print('Node 0:', g.nodes()[0])
-            print('Node 1:', g.nodes()[1])
-            print('...')
-            
+            g_df = pd.DataFrame.from_dict(dict(g.nodes(data=True)), orient="index")
+            f_df = pd.DataFrame.from_dict(dict(g_df["features"]), orient="index")
+
+            df = pd.concat([g_df, f_df], axis=1)
+            df.drop("features", axis=1, inplace=True)
+
+            print(df[["full_text", "dynamic"]])
+            # g_df.to_csv( self.working_dir / "programl.csv", index=False)
 
             pdb.set_trace()
             if done:

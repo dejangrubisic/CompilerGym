@@ -83,7 +83,6 @@ class HPCToolkitReward(Reward):
         return float(self.baseline_runtime - new_runtime) / self.baseline_runtime
 
 
-
 class HPCToolkitDataset(Dataset):
     def __init__(self, *args, **kwargs):
         super().__init__(
@@ -140,7 +139,7 @@ class HPCToolkitDataset(Dataset):
 
     # def benchmark_from_parsed_uri(self, uri: BenchmarkUri) -> Benchmark:
     #     # TODO: IMPORTANT
-    #     return self.benchmark(str(uri))            
+    #     return self.benchmark(str(uri))
 
 
 # Register the environment for use with gym.make(...).
@@ -168,7 +167,7 @@ def main():
         for i in range(2):
             print("Main: step = ", i)
             observation, reward, done, info = env.step(
-                action=3,#env.action_space.sample(),
+                action=env.action_space.sample(),
                 observations=["hpctoolkit"],
                 rewards=["hpctoolkit"],
             )
