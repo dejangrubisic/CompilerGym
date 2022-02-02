@@ -21,7 +21,7 @@ import gym
 import hatchet as ht
 import pandas as pd
 
-from compiler_gym.datasets import Benchmark, Dataset  # , BenchmarkUri
+from compiler_gym.datasets import Benchmark, Dataset, BenchmarkUri
 from compiler_gym.envs.llvm.datasets import (
     CBenchDataset,
     CBenchLegacyDataset,
@@ -143,9 +143,9 @@ class HPCToolkitDataset(Dataset):
         else:
             raise LookupError("Unknown program name")
 
-    # def benchmark_from_parsed_uri(self, uri: BenchmarkUri) -> Benchmark:
-    #     # TODO: IMPORTANT
-    #     return self.benchmark(str(uri))
+    def benchmark_from_parsed_uri(self, uri: BenchmarkUri) -> Benchmark:
+        # TODO: IMPORTANT
+        return self.benchmark(str(uri))
 
 
 # Register the environment for use with gym.make(...).
