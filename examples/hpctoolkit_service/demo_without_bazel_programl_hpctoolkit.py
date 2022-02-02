@@ -131,7 +131,7 @@ class HPCToolkitDataset(Dataset):
             cmd += ["-isystem", str(directory)]
         return subprocess.check_output(
             cmd,
-            timeout=300,
+            timeout=30000,
         )
 
     def benchmark_uris(self) -> Iterable[str]:
@@ -155,8 +155,8 @@ register(
     kwargs={
         "service": HPCTOOLKIT_PY_SERVICE_BINARY,
         "rewards": [ProgramlHPCToolkitReward()],
-        # "datasets": [HPCToolkitDataset(), CBenchLegacyDataset2(site_data_path("llvm-v0"))],
-        "datasets": [HPCToolkitDataset()],
+        "datasets": [HPCToolkitDataset(), CBenchLegacyDataset2(site_data_path("llvm-v0"))],
+        # "datasets": [HPCToolkitDataset()],
     },
 )
 
@@ -168,15 +168,15 @@ def main():
     # Create the environment using the regular gym.make(...) interface.
     with gym.make("hpctoolkit-llvm-v0") as env:
         # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/offsets1")
-        env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/conv2d")
+        # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/conv2d")
         # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/nanosleep")
 
-        # env.reset(benchmark="benchmark://cbench-v1/qsort")
+        env.reset(benchmark="benchmark://cbench-v1/qsort")
 
         for i in range(2):
             print("Main: step = ", i)
             observation, reward, done, info = env.step(
-                action=env.action_space.sample(),
+                action=3,#env.action_space.sample(),
                 observations=["programl_hpctoolkit"],
                 rewards=["programl_hpctoolkit"],
             )
@@ -190,7 +190,7 @@ def main():
             df.drop("features", axis=1, inplace=True)
 
             print(df[["full_text", "dynamic"]])
-            # g_df.to_csv( self.working_dir / "programl.csv", index=False)
+            df.to_csv( os.getcwd() + "/programl.csv", index=False)
 
             pdb.set_trace()
             if done:

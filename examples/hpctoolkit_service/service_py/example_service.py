@@ -18,6 +18,8 @@ from typing import List, Optional, Tuple
 import hatchet as ht
 import numpy as np
 import programl as pg
+import pandas as pd
+import os
 import utils
 
 import compiler_gym.third_party.llvm as llvm
@@ -106,6 +108,12 @@ class HPCToolkitCompilationSession(CompilationSession):
         logging.info("Started a compilation session for %s", benchmark.uri)
         self._benchmark = benchmark
         self._action_space = action_space
+        self.working_path = str(working_directory)
+        
+        print("\n", self.working_path, "\n")
+        os.chdir(self.working_path)
+
+        pdb.set_trace()
 
         # Resolve the paths to LLVM binaries once now.
         self._clang = str(llvm.clang_path())
@@ -117,7 +125,6 @@ class HPCToolkitCompilationSession(CompilationSession):
         self._llvm_path = str(self.working_dir / "benchmark.ll")
         self._llvm_before_path = str(self.working_dir / "benchmark.previous.ll")
         self._bc_path = str(self.working_dir / "benchmark.bc")
-        self._bc_download_path = str(self.working_dir / "benchmark-downloaded.bc")
         self._exe_path = str(self.working_dir / "benchmark.exe")
         self._exe_struct_path = self._exe_path + ".hpcstruct"
 
@@ -135,27 +142,72 @@ class HPCToolkitCompilationSession(CompilationSession):
         ]  # TODO: Use this from hatchat dataframe
 
         # Dump the benchmark source to disk.
-        self._src_path = str(self.working_dir / "benchmark.c")
-        with open(self._src_path, "wb") as f:
-            f.write(benchmark.program.contents)
+        # If benchmark is .bc file
+        self._running_cbench = False
+        if benchmark.program.contents.startswith(b'BC'):
+            self._running_cbench = True
+            _src_path = str(self.working_dir / "benchmark-downloaded.bc")
+            with open(_src_path, 'wb') as f:
+                f.write(benchmark.program.contents)
+            
+            compile_to_ll = [
+                self._llvm_dis, 
+                "-o", 
+                self._llvm_path, 
+                _src_path
+            ]
 
 
+            # FIXME: This is hardcoded for cbench-v1/qsort.
+            # data for qsort
+            qsort_input_data = site_data_path("llvm-v0/cbench-v1-runtime-data/runtime_data") / "automotive_qsort_data" / "1.dat"
+            qsort_output_data = self.working_dir / "sourted_output.dat"
+            self._run_exe = [self._exe_path, str(qsort_input_data), str(qsort_output_data)]
+            # cBench benchmarks expect that a file _finfo_dataset exists in the
+            # current working directory and contains the number of benchmark
+            # iterations in it.
+            with open(self.working_dir / "_finfo_dataset", "w") as f:
+                print(1, file=f)
+            # For more info how to run other benchmarks, see this.
+            # from compiler_gym.envs.llvm.datasets.cbench import validator
+            # pdb.set_trace()
+            # validator(
+            #     benchmark="benchmark://cbench-v1/qsort",
+            #     cmd=f"$BIN $D/automotive_qsort_data/1.dat",
+            #     data=[f"automotive_qsort_data/1.dat"],
+            #     outs=["sorted_output.dat"],
+            #     linkopts=["-lm"],
+            # )
 
-        # Set compile commands
-        if action_space.name == "llvm":
+
+        else: # If Benchmark is in C
+            _src_path = str(self.working_dir / "benchmark.c")
+            with open(_src_path, "wb") as f:
+                f.write(benchmark.program.contents)
+
+            # Set run commands
+            self._run_exe = [self._exe_path]
+
             compile_to_ll = [
                 self._clang,
                 "-o",
                 self._llvm_path,
                 "-S",
                 "-emit-llvm",
-                self._src_path,
-            ]
+                _src_path,
+            ]            
 
+
+
+
+
+
+        # Set compile commands
+        if action_space.name == "llvm":
             # Optimization must go on position: self.optimize_and_save_ll[0][1]
             self.optimize_and_save_ll = [
                 [self._opt, "-O0", "--debugify", "-o", self._bc_path, self._llvm_path],
-                [self._clang, self._bc_path, "-o", self._exe_path],
+                [self._clang, self._bc_path, "-o", self._exe_path, '-lm'],
                 [self._llvm_dis, "-o", self._llvm_path, self._bc_path]
             ]
 
@@ -178,8 +230,7 @@ class HPCToolkitCompilationSession(CompilationSession):
             )
 
 
-        print("\n", self.working_dir, "\n")
-        pdb.set_trace()
+        # pdb.set_trace()
 
     def apply_action(self, action: Action) -> Tuple[bool, Optional[ActionSpace], bool]:
 
@@ -289,9 +340,9 @@ class HPCToolkitCompilationSession(CompilationSession):
                 "REALTIME@100",
                 "-t",
                 "-o",
-                self.working_dir / "m",
-                self._exe_path,
-            ],
+                str(self.working_dir) + "/m",
+            ] + self._run_exe
+            ,
             ["hpcstruct", "-o", self._exe_struct_path, self._exe_path],
             [
                 "hpcprof-mpi",
@@ -304,7 +355,6 @@ class HPCToolkitCompilationSession(CompilationSession):
                 self.working_dir / "m",
             ],
         ]
-
         for cmd in hpctoolkit_cmd:
             print(cmd)
 
@@ -338,7 +388,7 @@ class HPCToolkitCompilationSession(CompilationSession):
         with open(ll_path) as f:
             for line in f.readlines():
                 if line[0:2] == "  " and line[2] != " ":
-                    # print(len(inst_list), str(line))
+                    # print(len(inst_list), str(line)) # Important for Debug
                     inst_list.append(str(line[2:-1]))  # strip '  ' and '\n' at the end
         return inst_list
 
@@ -368,10 +418,15 @@ class HPCToolkitCompilationSession(CompilationSession):
         for n_id in list(g_programl.nodes())[1:]:
             node = g_programl.nodes[n_id]
 
-            if node["type"] == 0 and "features" in node:  # instruction
+            if node["type"] == 0 and "features" in node and node["features"]["full_text"][0] != '':  # instruction
                 hatchet_row = df[
                     df["line"] == ins_line
                 ]  # if there is multiple sum them
+
+                # print(ins_line, node["features"]["full_text"][0]) # Important for debug
+                if node["features"]["full_text"][0] == '':
+                    pdb.set_trace()
+
                 ins_line += 1
 
                 if hatchet_row.empty == True:
@@ -382,10 +437,21 @@ class HPCToolkitCompilationSession(CompilationSession):
                     ]
 
                     # Assert with pdb.set_trace()
-                    if hatchet_row["llvm_ins"][0] != node["features"]["full_text"][0]:
-                        print("hatchat llvm_ins different from programl llvm_ins")
-                        pdb.set_trace()
+                    if hatchet_row["llvm_ins"][0].split('!')[0] != node["features"]["full_text"][0].split('!')[0]:
+                        print("\n", "ERROR: hatchat llvm_ins different from programl llvm_ins", "\n")
                         print(hatchet_row["llvm_ins"], node["features"]["full_text"][0])
+
+                        # Debug save files
+                        g_df = pd.DataFrame.from_dict(dict(g_programl.nodes(data=True)), orient="index")
+                        f_df = pd.DataFrame.from_dict(dict(g_df["features"]), orient="index")
+
+                        g_df = pd.concat([g_df, f_df], axis=1)
+                        g_df.drop("features", axis=1, inplace=True)
+                        g_df.to_csv( self.working_dir / "programl.csv", index=False)
+                        df.to_csv( self.working_dir / "hatchet.csv", index=False)
+                        pdb.set_trace()
+
+                        print(df[["full_text", "dynamic"]])
 
                 # print(node['features']['dynamic'])
 
