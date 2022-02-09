@@ -14,6 +14,7 @@ from copy import deepcopy as deepcopy
 import compiler_gym.third_party.llvm as llvm
 from compiler_gym.util.commands import run_command, Popen
 from compiler_gym.service.proto import Benchmark
+from signal import Signals
 from typing import List, Optional, Tuple
 
 
@@ -22,7 +23,7 @@ from typing import List, Optional, Tuple
 
 def run_command_stdout_redirect(cmd: List[str], timeout: int, output_file):
     with Popen(
-        cmd, stdout=output_file, stderr=subprocess.PIPE, universal_newlines=True
+        cmd, stdout=output_file, stderr=subprocess.PIPE, universal_newlines=True,
     ) as process:
         stdout, stderr = process.communicate(timeout=timeout)
         if process.returncode:
@@ -73,7 +74,7 @@ def pre_run_cmd_with_redirection(cmd, working_dir):
 class BenchmarkBuilder:
     
     def __init__(self, working_directory: Path, benchmark: Benchmark):
-        pdb.set_trace()
+        # pdb.set_trace()
         print(benchmark.uri)
 
         self.clang = str(llvm.clang_path())
@@ -247,4 +248,4 @@ class BenchmarkBuilder:
         assert run_cmd[0] == './a.out'
         # Replace ./a.out with the exe_path
         run_cmd[0] = self.exe_path
-        self.run_cmd = run_cmd + ['>', '/dev/null']
+        self.run_cmd = run_cmd #+ ['1>', '/dev/null'] # TODO: this doesn't work

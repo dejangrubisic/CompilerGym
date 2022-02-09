@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 """An example CompilerGym service in python."""
+from cmath import nan
 import logging
 import os
 import pdb
@@ -13,7 +14,7 @@ import shutil
 import subprocess
 
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import hatchet as ht
 import numpy as np
@@ -95,6 +96,13 @@ class HPCToolkitCompilationSession(CompilationSession):
                 min=ScalarLimit(value=0), max=ScalarLimit(value=1e5)
             ),
         ),
+        ObservationSpace(
+            name="perf",
+            binary_size_range=ScalarRange(
+                min=ScalarLimit(value=0), max=ScalarLimit(value=1e5)
+            ),
+        ),
+
     ]
 
     def __init__(
@@ -126,7 +134,7 @@ class HPCToolkitCompilationSession(CompilationSession):
 
 
         self.benchmark = benchmark_builder.BenchmarkBuilder(working_directory, benchmark)
-        pdb.set_trace()
+        # pdb.set_trace()
 
 
 
@@ -164,6 +172,12 @@ class HPCToolkitCompilationSession(CompilationSession):
             print("get_observation: runtime")
             avg_exec_time = self.runtime_get_average()
             return Observation(scalar_double=avg_exec_time)
+        
+        if observation_space.name == "perf":
+            print("get_observation: perf")
+            perf_dict = self.perf_get_dict()            
+            pickled = pickle.dumps(perf_dict)
+            return Observation(binary_value=pickled)
 
         elif observation_space.name == "hpctoolkit":
             print("get_observation: hpctoolkit")
@@ -195,30 +209,61 @@ class HPCToolkitCompilationSession(CompilationSession):
     ##########################################################################
 
     def runtime_get_average(self) -> float:
-        pdb.set_trace()
         # TODO: add documentation that benchmarks need print out execution time
         # Running 5 times and taking the average of middle 3
         exec_times = []
         
-        for _ in range(5):
-            stdout = run_command(
-                ['time'] + self.benchmark.run_cmd,
-                timeout=30,
-            )
-            print(stdout)
-            exec_time = 1 # TODO: Figure out how to parse time to int and to direct output to /dev/null
-            try:
-                exec_times.append(exec_time)
-            except ValueError:
-                raise ValueError(
-                    f"Error in parsing execution time from output of command\n"
-                    f"Please ensure that the source code of the benchmark measures execution time and prints to stdout\n"
-                    f"Stdout of the program: {stdout}"
+        with open('/dev/null', 'w') as f:
+
+            for _ in range(5):
+                stdout = benchmark_builder.run_command_stdout_redirect(
+                    ['time'] + self.benchmark.run_cmd,
+                    timeout=30,
+                    output_file=f
                 )
+                print(stdout)
+                exec_time = 1 # TODO: Figure out how to parse time to int and to direct output to /dev/null
+
+                try:
+                    exec_times.append(exec_time)
+                except ValueError:
+                    raise ValueError(
+                        f"Error in parsing execution time from output of command\n"
+                        f"Please ensure that the source code of the benchmark measures execution time and prints to stdout\n"
+                        f"Stdout of the program: {stdout}"
+                    )
 
         exec_times = np.sort(exec_times)
         avg_exec_time = np.mean(exec_times[1:4])
         return avg_exec_time
+
+
+
+    def perf_parse_to_dict(self, csv_name: str) -> Dict:
+
+        # if 'r' there will be column for std +- var
+        column_names = ['counter_value', 'counter_unit', 'event_name', 'counter_runtime', 'counter_runtime_perc', 'metric_value', 'metric_unit']
+        df = pd.read_csv(csv_name, names=column_names)
+        assert(len(column_names) == df.shape[1])
+
+        df = df[df['counter_value'] != '<not supported>'][df['event_name'].notnull()]
+
+        return dict(zip(df['event_name'], df['metric_value'])) 
+
+    def perf_get_dict(self) -> Dict:
+
+        # perf stat -o metric_out.csv -d -d -d -x ',' ./benchmark.exe 1125000
+        # perf stat -d -d -d -x ',' ./benchmark.exe 1125000 # much faster
+        metric_file_name = "metrics.csv"
+        perf_cmd = ['perf', 'stat', '-o', metric_file_name, '-d', '-d', '-d', '-x', ','] + self.benchmark.run_cmd
+
+        stdout = run_command(
+            perf_cmd,
+            timeout=30,                
+        )
+
+        return self.perf_parse_to_dict(metric_file_name)
+
 
     def hatchet_get_graph(self) -> ht.GraphFrame:
         hpctoolkit_cmd = [
