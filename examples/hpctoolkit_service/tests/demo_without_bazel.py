@@ -122,16 +122,6 @@ class HPCToolkitDataset(Dataset):
             site_data_base=site_data_path("example_dataset"),
         )
 
-        # self._benchmarks = {
-        #     "benchmark://hpctoolkit-cpu-v0/offsets1": Benchmark.from_file(
-        #         "benchmark://hpctoolkit-cpu-v0/offsets1",
-        #         BENCHMARKS_PATH + "/offsets1.c",
-        #     ),
-        #     "benchmark://hpctoolkit-cpu-v0/conv2d": Benchmark.from_file(
-        #         "benchmark://hpctoolkit-cpu-v0/conv2d",
-        #         BENCHMARKS_PATH + "/conv2d.c",
-        #     ),
-        # }
 
         self._benchmarks = {
             "benchmark://hpctoolkit-cpu-v0/conv2d": Benchmark.from_file_contents(
@@ -198,7 +188,6 @@ register(
                      AnghaBenchDataset(site_data_path("llvm-v0"), sort_order=0),
                      CHStoneDataset(site_data_path("llvm-v0"), sort_order=0),
                      ],
-        # "datasets": [HPCToolkitDataset()],
     },
 )
 

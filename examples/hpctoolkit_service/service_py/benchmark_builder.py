@@ -16,57 +16,7 @@ from compiler_gym.util.commands import run_command, Popen
 from compiler_gym.service.proto import Benchmark
 from signal import Signals
 from typing import List, Optional, Tuple
-
-
-
-## Auxilary functions
-
-def run_command_stdout_redirect(cmd: List[str], timeout: int, output_file):
-    with Popen(
-        cmd, stdout=output_file, stderr=subprocess.PIPE, universal_newlines=True,
-    ) as process:
-        stdout, stderr = process.communicate(timeout=timeout)
-        if process.returncode:
-            returncode = process.returncode
-            try:
-                # Try and decode the name of a signal. Signal returncodes
-                # are negative.
-                returncode = f"{returncode} ({Signals(abs(returncode)).name})"
-            except ValueError:
-                pass
-            raise OSError(
-                f"Compilation job failed with returncode {returncode}\n"
-                f"Command: {' '.join(cmd)}\n"
-                f"Stderr: {stderr.strip()}"
-            )  
-
-
-def proto_buff_container_to_list(container):
-    # Copy proto buff container to python list.
-    compile_cmd = [el for el in container]
-    # NOTE: if run_command function can work with proto buf containers,
-    # then generating the list can be omitted. Uncomment the following statement instead.
-    # compile_cmd = build_cmd.argument
-    return compile_cmd
-
-
-def pre_run_cmd_with_redirection(cmd, working_dir):
-    """
-    Pre run command might redirect the stdout to a file.
-    Try to recignize this.
-    """
-    # FIXME: This function assumes that the last argument may contain the files
-    #   to which the stdout should be redirected.
-    if cmd[-1].startswith('>'):
-        # Remove '>' from file name and prepend working_dir path
-        file_path = working_dir / cmd[-1][1:]
-        with open(file_path, 'w') as f:
-            # Remove the stdout redirection from the cmd.
-            cmd = cmd[:-1]
-            run_command_stdout_redirect(cmd, timeout=30, output_file=f)
-    else:
-        # Execute the command with no redirection
-        run_command(cmd, timeout=30)
+import utils
 
 
 
@@ -90,11 +40,10 @@ class BenchmarkBuilder:
         # vi3: Used only if the benchmark is downloaded in .bc format.
         self.bc_download_path = str(self.working_dir / "benchmark-downloaded.bc")
         self.exe_path = str(self.working_dir / "benchmark.exe")
-        self.exe_struct_path = self.exe_path + ".hpcstruct"
 
         # TODO: Temporary
         self.pre_run_cmd = []
-        self.run_cmd = []
+        self.run_cmd = [self.exe_path]
 
         self.compile_ll = {
             'opt':  [self.opt, "--debugify", "-o", self.bc_path, self.llvm_path],
@@ -106,7 +55,6 @@ class BenchmarkBuilder:
         
 
     def prepare_benchmark(self, benchmark: Benchmark):
-        
         self.save_to_ll(benchmark)        
         self.set_build_run_cmd(benchmark)
         self.execute_pre_run_cmd()
@@ -151,21 +99,18 @@ class BenchmarkBuilder:
 
 
     def set_build_run_cmd(self, benchmark):
+
         if hasattr(benchmark, 'dynamic_config'):
-            if hasattr(benchmark.dynamic_config, 'build_cmd'):
+            if hasattr(benchmark.dynamic_config, 'build_cmd'):                
                 self.prepare_build_cmd(benchmark.dynamic_config.build_cmd)
     
             if hasattr(benchmark.dynamic_config, 'pre_run_cmd'):
-                for cmd in benchmark.dynamic_config.pre_run_cmd:
-                    self.prepare_pre_run_cmd(cmd)
+                self.prepare_pre_run_cmd(benchmark.dynamic_config.pre_run_cmd)
         
             if hasattr(benchmark.dynamic_config, 'run_cmd'):
                 self.prepare_run_cmd(benchmark.dynamic_config.run_cmd)
 
-        else: # prepare_other_bench
-            self.run_cmd = [self.exe_path]
 
-        # pdb.set_trace()
 
 
     def execute_pre_run_cmd(self):
@@ -173,6 +118,24 @@ class BenchmarkBuilder:
         for cmd in self.pre_run_cmd:
             pre_run_cmd_with_redirection(cmd, self.working_dir)
 
+    def pre_run_cmd_with_redirection(cmd, working_dir):
+        """
+        Pre run command might redirect the stdout to a file.
+        Try to recignize this.
+        """
+        # FIXME: This function assumes that the last argument may contain the files
+        #   to which the stdout should be redirected.
+        if cmd[-1].startswith('>'):
+            # Remove '>' from file name and prepend working_dir path
+            file_path = working_dir / cmd[-1][1:]
+            with open(file_path, 'w') as f:
+                # Remove the stdout redirection from the cmd.
+                cmd = cmd[:-1]
+                utils.run_command_stdout_redirect(cmd, timeout=30, output_file=f)
+        else:
+            # Execute the command with no redirection
+            run_command(cmd, timeout=30)
+            
 
     def apply_action(self, opt: str):        
         compile_ll = deepcopy(self.compile_ll)
@@ -198,18 +161,19 @@ class BenchmarkBuilder:
         }
         Only argument list with the following form: ["$CC", "$IN", "-lm"] is processed.
         """
-        compile_cmd = proto_buff_container_to_list(build_cmd.argument)
-        # Just for the debugging purposes.
-        assert compile_cmd[0] == "$CC"
-        assert compile_cmd[1] == "$IN"
-        # Replace $CC with the llvm_clang.
-        compile_cmd[0] = self.clang
-        # Replace $IN with path to the .bc files
-        compile_cmd[1] = self.bc_path
-        # Append the output file of the compile command.
-        compile_cmd.extend(["-o", self.exe_path])
-        # Add the last compile command.
-        self.compile_ll['cmp'] = compile_cmd
+        compile_cmd = utils.proto_buff_container_to_list(build_cmd.argument)
+        if compile_cmd:
+            # Just for the debugging purposes.
+            assert compile_cmd[0] == "$CC"
+            assert compile_cmd[1] == "$IN"
+            # Replace $CC with the llvm_clang.
+            compile_cmd[0] = self.clang
+            # Replace $IN with path to the .bc files
+            compile_cmd[1] = self.bc_path
+            # Append the output file of the compile command.
+            compile_cmd.extend(["-o", self.exe_path])
+            # Add the last compile command.
+            self.compile_ll['cmp'] = compile_cmd
 
 
     def prepare_pre_run_cmd(self, pre_run_cmd):
@@ -223,9 +187,11 @@ class BenchmarkBuilder:
         }
         Only argument is considered for now.
         """
-        pre_run_cmd = proto_buff_container_to_list(pre_run_cmd.argument)
-        # append pre_run_cmd list to the pre_run_cmd
-        self.pre_run_cmd.append(pre_run_cmd)
+        for cmd in pre_run_cmd:
+            pre_run_cmd_list = utils.proto_buff_container_to_list(cmd.argument)
+            if pre_run_cmd_list:
+                # append pre_run_cmd list to the pre_run_cmd
+                self.pre_run_cmd.append(pre_run_cmd_list)
 
 
     def prepare_run_cmd(self, run_cmd):
@@ -242,10 +208,10 @@ class BenchmarkBuilder:
         Only argument is considered for now.
         """
         print("________ Run command: \n", run_cmd)
-        run_cmd = proto_buff_container_to_list(run_cmd.argument)
-
-        # Just for the debugging purposes.
-        assert run_cmd[0] == './a.out'
-        # Replace ./a.out with the exe_path
-        run_cmd[0] = self.exe_path
-        self.run_cmd = run_cmd #+ ['1>', '/dev/null'] # TODO: this doesn't work
+        run_cmd = utils.proto_buff_container_to_list(run_cmd.argument)
+        if run_cmd:
+            # Just for the debugging purposes.
+            assert run_cmd[0] == './a.out'
+            # Replace ./a.out with the exe_path
+            run_cmd[0] = self.exe_path
+            self.run_cmd = run_cmd

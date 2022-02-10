@@ -1,0 +1,93 @@
+import hatchet as ht
+import pandas as pd
+import pickle
+import pdb
+from typing import Dict, List, Optional, Tuple
+from compiler_gym.util.commands import run_command
+
+from compiler_gym.service.proto import (
+    Observation,
+)
+
+
+class Profiler:
+    def __init__(self, run_cmd, src_path=None):
+        self.run_cmd = run_cmd
+        self.exe_path = run_cmd[0]
+        self.llvm_path = src_path
+        self.exe_struct_path = self.exe_path + ".hpcstruct"
+
+
+    def get_observation(self) -> Observation:
+        pdb.set_trace()
+        g_hatchet = self.hatchet_get_graph()
+        pickled = pickle.dumps(g_hatchet)
+        return Observation(binary_value=pickled)
+
+
+    def hatchet_get_graph(self) -> ht.GraphFrame:
+        hpctoolkit_cmd = [
+            [
+                "rm",
+                "-rf",
+                self.exe_struct_path,
+                "m",
+                "db",
+            ],
+            [
+                "hpcrun",
+                "-e",
+                "REALTIME@100",
+                "-t",
+                "-o",
+                "m",
+            ] + self.run_cmd ,
+            [   "hpcstruct", "-o", self.exe_struct_path, self.exe_path],
+            [
+                "hpcprof-mpi",
+                "-o",                        
+                "db",
+                "--metric-db",
+                "yes",
+                "-S",
+                self.exe_struct_path,
+                "m",
+            ],
+        ]
+        pdb.set_trace()
+        for cmd in hpctoolkit_cmd:
+            print(cmd)
+
+            run_command(
+                cmd,
+                timeout=30,
+            )
+
+        g_hatchet = ht.GraphFrame.from_hpctoolkit("db")
+
+        if self.llvm_path:
+            self.addInstStrToDataframe(g_hatchet, self.llvm_path)
+
+        return g_hatchet    
+
+    def addInstStrToDataframe(self, g_hatchet: ht.GraphFrame, ll_path: str) -> None:
+
+        inst_list = self.extractInstStr(ll_path)
+
+        g_hatchet.dataframe["llvm_ins"] = ""
+
+        for i, inst_idx in enumerate(g_hatchet.dataframe["line"]):
+            if inst_idx < len(inst_list):
+                g_hatchet.dataframe["llvm_ins"][i] = inst_list[inst_idx]
+
+
+    def extractInstStr(self, ll_path: str) -> list:
+        inst_list = []
+        inst_list.append("dummy")
+
+        with open(ll_path) as f:
+            for line in f.readlines():
+                if line[0:2] == "  " and line[2] != " ":
+                    # print(len(inst_list), str(line)) # Important for Debug
+                    inst_list.append(str(line[2:-1]))  # strip '  ' and '\n' at the end
+        return inst_list

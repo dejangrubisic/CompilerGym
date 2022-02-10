@@ -182,7 +182,6 @@ register(
                      AnghaBenchDataset(site_data_path("llvm-v0"), sort_order=0),
                      CHStoneDataset(site_data_path("llvm-v0"), sort_order=0),
                      ],
-        # "datasets": [HPCToolkitDataset()],
     },
 )
 
@@ -199,7 +198,7 @@ def main():
         benchmark_to_process = [
             # from benchmarks directory
             # "benchmark://hpctoolkit-cpu-v0/offsets1",
-            # "benchmark://hpctoolkit-cpu-v0/conv2d",
+            "benchmark://hpctoolkit-cpu-v0/conv2d",
             # "benchmark://hpctoolkit-cpu-v0/nanosleep",
 
             # cbench-v1

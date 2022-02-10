@@ -156,7 +156,6 @@ register(
         "service": HPCTOOLKIT_PY_SERVICE_BINARY,
         "rewards": [ProgramlHPCToolkitReward()],
         "datasets": [HPCToolkitDataset(), CBenchLegacyDataset2(site_data_path("llvm-v0"))],
-        # "datasets": [HPCToolkitDataset()],
     },
 )
 
@@ -168,10 +167,10 @@ def main():
     # Create the environment using the regular gym.make(...) interface.
     with gym.make("hpctoolkit-llvm-v0") as env:
         # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/offsets1")
-        # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/conv2d")
+        env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/conv2d")
         # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/nanosleep")
 
-        env.reset(benchmark="benchmark://cbench-v1/qsort")
+        # env.reset(benchmark="benchmark://cbench-v1/qsort")
 
         for i in range(2):
             print("Main: step = ", i)

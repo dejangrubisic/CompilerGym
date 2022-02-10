@@ -18,8 +18,9 @@ from pathlib import Path
 from typing import Iterable
 
 import gym
+import hatchet as ht
 
-from compiler_gym.datasets import Benchmark, Dataset
+from compiler_gym.datasets import Benchmark, Dataset, BenchmarkUri
 from compiler_gym.envs.llvm.llvm_benchmark import get_system_includes
 from compiler_gym.spaces import Reward
 from compiler_gym.third_party import llvm
@@ -44,37 +45,42 @@ HPCTOOLKIT_HEADER: Path = Path(
     "/home/dx4/tools/CompilerGym/compiler_gym/third_party/hpctoolkit/header.h"
 )
 
-class ProgramlReward(Reward):
-    """An example reward that uses changes in the "programl" observation value
+
+class HPCToolkitReward(Reward):
+    """An example reward that uses changes in the "runtime" observation value
     to compute incremental reward.
     """
 
     def __init__(self):
         super().__init__(
-            id="programl",
-            observation_spaces=["programl"],
+            id="hpctoolkit",
+            observation_spaces=["hpctoolkit"],
             default_value=0,
             default_negates_returns=True,
             deterministic=False,
             platform_dependent=True,
         )
-        self.baseline_ins_count = 0
+        self.baseline_cct = None
+        self.baseline_runtime = 0
 
     def reset(self, benchmark: str, observation_view):
-        print("Reward Programl: reset")
+        print("Reward HPCToolkit: reset")
+        # pdb.set_trace()
         del benchmark  # unused
-        unpickled_cct = observation_view["programl"]
-        g = pickle.loads(unpickled_cct)
-        self.baseline_ins_count = sum( [ 1 for _, x in g.nodes.data() if x['type'] == 1 ])
+        unpickled_cct = observation_view["hpctoolkit"]
+        gf = pickle.loads(unpickled_cct)
+        self.baseline_cct = gf
+        self.baseline_runtime = gf.dataframe[reward_metric][0]
 
     def update(self, action, observations, observation_view):
-        print("Reward Programl: update")
+        print("Reward HPCToolkit: update")
+        # pdb.set_trace()
         del action
         del observation_view
-        g = pickle.loads(observations[0])
-        new_ins_count = sum( [ 1 for _, x in g.nodes.data() if x['type'] == 1 ])
-        return float(self.baseline_ins_count - new_ins_count) / self.baseline_ins_count
 
+        gf = pickle.loads(observations[0])
+        new_runtime = gf.dataframe[reward_metric][0]
+        return float(self.baseline_runtime - new_runtime) / self.baseline_runtime
 
 
 class HPCToolkitDataset(Dataset):
@@ -131,9 +137,9 @@ class HPCToolkitDataset(Dataset):
         else:
             raise LookupError("Unknown program name")
 
-    # def benchmark_from_parsed_uri(self, uri: BenchmarkUri) -> Benchmark:
-    #     # TODO: IMPORTANT
-    #     return self.benchmark(str(uri))            
+    def benchmark_from_parsed_uri(self, uri: BenchmarkUri) -> Benchmark:
+        # TODO: IMPORTANT
+        return self.benchmark(str(uri))
 
 
 # Register the environment for use with gym.make(...).
@@ -142,7 +148,7 @@ register(
     entry_point="compiler_gym.envs:CompilerEnv",
     kwargs={
         "service": HPCTOOLKIT_PY_SERVICE_BINARY,
-        "rewards": [ ProgramlReward()],
+        "rewards": [HPCToolkitReward()],
         "datasets": [HPCToolkitDataset()],
     },
 )
@@ -154,6 +160,8 @@ def main():
 
     # Create the environment using the regular gym.make(...) interface.
     with gym.make("hpctoolkit-llvm-v0") as env:
+        print("Make hpctoolkit")
+        pdb.set_trace()
         # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/offsets1")
         env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/conv2d")
         # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/nanosleep")
@@ -162,14 +170,14 @@ def main():
             print("Main: step = ", i)
             observation, reward, done, info = env.step(
                 action=env.action_space.sample(),
-                observations=["programl"],
-                rewards=["programl"],
+                observations=["hpctoolkit"],
+                rewards=["hpctoolkit"],
             )
             print(reward)
             print(info)
-            g = pickle.loads(observation[0])
-            print(g.nodes())
-            
+            gf = pickle.loads(observation[0])
+            print(gf.tree(metric_column=reward_metric))
+            print(gf.dataframe[[reward_metric, "line", "llvm_ins"]])
 
             pdb.set_trace()
             if done:
