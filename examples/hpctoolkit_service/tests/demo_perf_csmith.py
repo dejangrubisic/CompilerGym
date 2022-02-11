@@ -13,14 +13,25 @@ import logging
 import os
 import pdb
 import pickle
+import re
 import subprocess
+from math import isnan
 from pathlib import Path
 from typing import Iterable
 
 import gym
-import hatchet as ht
 
 from compiler_gym.datasets import Benchmark, BenchmarkUri, Dataset
+from compiler_gym.envs.llvm.datasets import (
+    AnghaBenchDataset,
+    BlasDataset,
+    CBenchDataset,
+    CBenchLegacyDataset,
+    CBenchLegacyDataset2,
+    CHStoneDataset,
+    CsmithDataset,
+    NPBDataset,
+)
 from compiler_gym.envs.llvm.llvm_benchmark import get_system_includes
 from compiler_gym.spaces import Reward
 from compiler_gym.third_party import llvm
@@ -38,47 +49,39 @@ assert HPCTOOLKIT_PY_SERVICE_BINARY.is_file(), "Service script not found"
 
 # BENCHMARKS_PATH: Path = runfiles_path("examples/hpctoolkit_service/benchmarks")
 BENCHMARKS_PATH: Path = (
-    "/home/dx4/tools/CompilerGym/examples/hpctoolkit_service/benchmarks/cpu-benchmarks"
+    "/home/vi3/CompilerGym/examples/hpctoolkit_service/benchmarks/cpu-benchmarks"
 )
 
 HPCTOOLKIT_HEADER: Path = Path(
-    "/home/dx4/tools/CompilerGym/compiler_gym/third_party/hpctoolkit/header.h"
+    "/home/vi3/CompilerGym/compiler_gym/third_party/hpctoolkit/header.h"
 )
 
 
-class HPCToolkitReward(Reward):
-    """An example reward that uses changes in the "runtime" observation value
-    to compute incremental reward.
-    """
-
+class PerfReward(Reward):
     def __init__(self):
         super().__init__(
-            id="hpctoolkit",
-            observation_spaces=["hpctoolkit"],
+            id="perf",
+            observation_spaces=["perf"],
             default_value=0,
             default_negates_returns=True,
             deterministic=False,
             platform_dependent=True,
         )
-        self.baseline_cct = None
-        self.baseline_runtime = 0
+        self.baseline_cycles = 0
 
     def reset(self, benchmark: str, observation_view):
-        print("Reward HPCToolkit: reset")
         del benchmark  # unused
-        unpickled_cct = observation_view["hpctoolkit"]
-        gf = pickle.loads(unpickled_cct)
-        self.baseline_cct = gf
-        self.baseline_runtime = gf.dataframe[reward_metric][0]
+        perf_dict = pickle.loads(observation_view["perf"])
+        self.baseline_cycles = int(perf_dict["cycles"])
+        print("Reward Perf: reset reward = ", self.baseline_cycles)
 
     def update(self, action, observations, observation_view):
-        print("Reward HPCToolkit: update")
-        del action
-        del observation_view
+        perf_dict = pickle.loads(observations[0])
+        new_cycles = int(perf_dict["cycles"])
 
-        gf = pickle.loads(observations[0])
-        new_runtime = gf.dataframe[reward_metric][0]
-        return float(self.baseline_runtime - new_runtime) / self.baseline_runtime
+        print("Reward Perf: update reward = ", new_cycles)
+
+        return float(self.baseline_cycles - new_cycles) / self.baseline_cycles
 
 
 class HPCToolkitDataset(Dataset):
@@ -89,6 +92,7 @@ class HPCToolkitDataset(Dataset):
             description="HPCToolkit cpu dataset",
             site_data_base=site_data_path("example_dataset"),
         )
+
         self._benchmarks = {
             "benchmark://hpctoolkit-cpu-v0/conv2d": Benchmark.from_file_contents(
                 "benchmark://hpctoolkit-cpu-v0/conv2d",
@@ -142,12 +146,12 @@ class HPCToolkitDataset(Dataset):
 
 # Register the environment for use with gym.make(...).
 register(
-    id="hpctoolkit-llvm-v0",
+    id="perf-v0",
     entry_point="compiler_gym.envs:CompilerEnv",
     kwargs={
         "service": HPCTOOLKIT_PY_SERVICE_BINARY,
-        "rewards": [HPCToolkitReward()],
-        "datasets": [HPCToolkitDataset()],
+        "rewards": [PerfReward()],
+        "datasets": [CsmithDataset(site_data_path("llvm-v0"), sort_order=0)],
     },
 )
 
@@ -156,29 +160,80 @@ def main():
     # Use debug verbosity to print out extra logging information.
     init_logging(level=logging.DEBUG)
 
+    blacklisted = [
+        "generator://csmith-v0/20",
+        "generator://csmith-v0/22",
+        "generator://csmith-v0/60",
+        "generator://csmith-v0/66",
+        "generator://csmith-v0/73",
+        "generator://csmith-v0/81",
+        "generator://csmith-v0/88",
+        "generator://csmith-v0/112",
+        "generator://csmith-v0/114",
+        "generator://csmith-v0/118",
+        "generator://csmith-v0/123",
+        "generator://csmith-v0/124",
+        "generator://csmith-v0/126",
+        "generator://csmith-v0/134",
+        "generator://csmith-v0/137",
+        "generator://csmith-v0/145",
+        "generator://csmith-v0/146",
+        "generator://csmith-v0/148",
+        "generator://csmith-v0/162",
+        "generator://csmith-v0/163",
+        "generator://csmith-v0/165",
+        "generator://csmith-v0/169",
+        "generator://csmith-v0/191",
+        "generator://csmith-v0/195",
+        "generator://csmith-v0/197",
+        "generator://csmith-v0/203",
+        "generator://csmith-v0/206",
+        "generator://csmith-v0/207",
+        "generator://csmith-v0/218",
+        "generator://csmith-v0/247",
+        "generator://csmith-v0/280",
+        "generator://csmith-v0/292",
+        "generator://csmith-v0/295",
+        "generator://csmith-v0/298",
+        "generator://csmith-v0/305",
+    ]
+    last_blacklisted = int(blacklisted[-1].split("/")[-1])
+
     # Create the environment using the regular gym.make(...) interface.
-    with gym.make("hpctoolkit-llvm-v0") as env:
-        print("Make hpctoolkit")
-        # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/offsets1")
-        env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/conv2d")
-        # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/nanosleep")
+    with gym.make("perf-v0") as env:
+        inc = 0
+        for bench in env.datasets["generator://csmith-v0"]:
+            # for i in range(last_blacklisted, 10000):
+            # bench = 'generator://csmith-v0/' + str(i)
+            inc += 1
 
-        for i in range(2):
-            print("Main: step = ", i)
-            observation, reward, done, info = env.step(
-                action=env.action_space.sample(),
-                observations=["hpctoolkit"],
-                rewards=["hpctoolkit"],
-            )
-            print(reward)
-            print(info)
-            gf = pickle.loads(observation[0])
-            print(gf.tree(metric_column=reward_metric))
-            print(gf.dataframe[[reward_metric, "line", "llvm_ins"]])
+            if bench in blacklisted:
+                continue
 
-            pdb.set_trace()
-            if done:
-                env.reset()
+            env.reset(benchmark=bench)
+            print("*********************", bench, "*********************")
+            for i in range(1):
+                print("Main: step = ", i)
+                observation, reward, done, info = env.step(
+                    action=env.action_space.sample(),
+                    observations=["perf"],
+                    rewards=["perf"],
+                )
+                print(reward)
+                # print(observation)
+                print(info)
+                perf_dict = pickle.loads(observation[0])
+                print(perf_dict)
+
+                # pdb.set_trace()
+
+                if isnan(reward[0]):
+                    print(bench, " Failed with Nan reward")
+                    return
+
+                if done:
+                    env.reset()
+        print("I run %d benchmarks." % inc)
 
 
 if __name__ == "__main__":

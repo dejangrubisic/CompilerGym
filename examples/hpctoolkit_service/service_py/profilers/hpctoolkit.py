@@ -1,13 +1,13 @@
+import pdb
+import pickle
+from typing import Dict, List, Optional, Tuple
+
 import hatchet as ht
 import pandas as pd
-import pickle
-import pdb
-from typing import Dict, List, Optional, Tuple
-from compiler_gym.util.commands import run_command
+import utils
 
-from compiler_gym.service.proto import (
-    Observation,
-)
+from compiler_gym.service.proto import Observation
+from compiler_gym.util.commands import run_command
 
 
 class Profiler:
@@ -17,15 +17,21 @@ class Profiler:
         self.llvm_path = src_path
         self.exe_struct_path = self.exe_path + ".hpcstruct"
 
+        self.metrics_list = [
+            "REALTIME@100",
+        ]
 
     def get_observation(self) -> Observation:
-        pdb.set_trace()
         g_hatchet = self.hatchet_get_graph()
         pickled = pickle.dumps(g_hatchet)
         return Observation(binary_value=pickled)
 
-
     def hatchet_get_graph(self) -> ht.GraphFrame:
+        events_list = []
+
+        for m in self.metrics_list:
+            events_list.extend(["-e", m])
+
         hpctoolkit_cmd = [
             [
                 "rm",
@@ -36,16 +42,16 @@ class Profiler:
             ],
             [
                 "hpcrun",
-                "-e",
-                "REALTIME@100",
-                "-t",
                 "-o",
                 "m",
-            ] + self.run_cmd ,
-            [   "hpcstruct", "-o", self.exe_struct_path, self.exe_path],
+                "-t",
+            ]
+            + events_list
+            + self.run_cmd,
+            ["hpcstruct", "-o", self.exe_struct_path, self.exe_path],
             [
                 "hpcprof-mpi",
-                "-o",                        
+                "-o",
                 "db",
                 "--metric-db",
                 "yes",
@@ -54,10 +60,9 @@ class Profiler:
                 "m",
             ],
         ]
-        pdb.set_trace()
+        print("HPCToolkit get observation:")
+        utils.print_list(hpctoolkit_cmd)
         for cmd in hpctoolkit_cmd:
-            print(cmd)
-
             run_command(
                 cmd,
                 timeout=30,
@@ -68,7 +73,7 @@ class Profiler:
         if self.llvm_path:
             self.addInstStrToDataframe(g_hatchet, self.llvm_path)
 
-        return g_hatchet    
+        return g_hatchet
 
     def addInstStrToDataframe(self, g_hatchet: ht.GraphFrame, ll_path: str) -> None:
 
@@ -79,7 +84,6 @@ class Profiler:
         for i, inst_idx in enumerate(g_hatchet.dataframe["line"]):
             if inst_idx < len(inst_list):
                 g_hatchet.dataframe["llvm_ins"][i] = inst_list[inst_idx]
-
 
     def extractInstStr(self, ll_path: str) -> list:
         inst_list = []

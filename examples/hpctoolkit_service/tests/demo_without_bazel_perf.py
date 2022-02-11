@@ -18,11 +18,18 @@ from pathlib import Path
 from typing import Iterable
 
 import gym
-import hatchet as ht
 
-from compiler_gym.datasets import Benchmark, Dataset, BenchmarkUri
-from compiler_gym.envs.llvm.datasets import CBenchDataset, CBenchLegacyDataset2, CBenchLegacyDataset, CsmithDataset, \
-    NPBDataset, BlasDataset, AnghaBenchDataset, CHStoneDataset
+from compiler_gym.datasets import Benchmark, BenchmarkUri, Dataset
+from compiler_gym.envs.llvm.datasets import (
+    AnghaBenchDataset,
+    BlasDataset,
+    CBenchDataset,
+    CBenchLegacyDataset,
+    CBenchLegacyDataset2,
+    CHStoneDataset,
+    CsmithDataset,
+    NPBDataset,
+)
 from compiler_gym.envs.llvm.llvm_benchmark import get_system_includes
 from compiler_gym.spaces import Reward
 from compiler_gym.third_party import llvm
@@ -64,49 +71,14 @@ class PerfReward(Reward):
         print("Reward Perf: reset")
         del benchmark  # unused
         perf_dict = pickle.loads(observation_view["perf"])
-        self.baseline_cycles = perf_dict['cycles']
-        
+        self.baseline_cycles = perf_dict["cycles"]
 
     def update(self, action, observations, observation_view):
         print("Reward Perf: update")
 
         perf_dict = pickle.loads(observations[0])
-        new_cycles = perf_dict['cycles']
+        new_cycles = perf_dict["cycles"]
         return float(self.baseline_cycles - new_cycles) / self.baseline_cycles
-
-
-class HPCToolkitReward(Reward):
-
-    def __init__(self):
-        super().__init__(
-            id="hpctoolkit",
-            observation_spaces=["hpctoolkit"],
-            default_value=0,
-            default_negates_returns=True,
-            deterministic=False,
-            platform_dependent=True,
-        )
-        self.baseline_cct = None
-        self.baseline_runtime = 0
-
-    def reset(self, benchmark: str, observation_view):
-        print("Reward HPCToolkit: reset")
-        # pdb.set_trace()
-        del benchmark  # unused
-        unpickled_cct = observation_view["hpctoolkit"]
-        gf = pickle.loads(unpickled_cct)
-        self.baseline_cct = gf
-        self.baseline_runtime = gf.dataframe[reward_metric][0]
-
-    def update(self, action, observations, observation_view):
-        print("Reward HPCToolkit: update")
-        # pdb.set_trace()
-        del action
-        del observation_view
-
-        gf = pickle.loads(observations[0])
-        new_runtime = gf.dataframe[reward_metric][0]
-        return float(self.baseline_runtime - new_runtime) / self.baseline_runtime
 
 
 class HPCToolkitDataset(Dataset):
@@ -168,6 +140,7 @@ class HPCToolkitDataset(Dataset):
         # TODO: IMPORTANT
         return self.benchmark(str(uri))
 
+
 # Register the environment for use with gym.make(...).
 register(
     id="perf-v0",
@@ -175,13 +148,15 @@ register(
     kwargs={
         "service": HPCTOOLKIT_PY_SERVICE_BINARY,
         "rewards": [PerfReward()],
-        "datasets": [HPCToolkitDataset(), CBenchDataset(site_data_path("llvm-v0")),
-                     CsmithDataset(site_data_path("llvm-v0"), sort_order=0),
-                     NPBDataset(site_data_path("llvm-v0"), sort_order=0),
-                     BlasDataset(site_data_path("llvm-v0"), sort_order=0),
-                     AnghaBenchDataset(site_data_path("llvm-v0"), sort_order=0),
-                     CHStoneDataset(site_data_path("llvm-v0"), sort_order=0),
-                     ],
+        "datasets": [
+            HPCToolkitDataset(),
+            CBenchDataset(site_data_path("llvm-v0")),
+            CsmithDataset(site_data_path("llvm-v0"), sort_order=0),
+            NPBDataset(site_data_path("llvm-v0"), sort_order=0),
+            BlasDataset(site_data_path("llvm-v0"), sort_order=0),
+            AnghaBenchDataset(site_data_path("llvm-v0"), sort_order=0),
+            CHStoneDataset(site_data_path("llvm-v0"), sort_order=0),
+        ],
     },
 )
 
@@ -200,7 +175,6 @@ def main():
             # "benchmark://hpctoolkit-cpu-v0/offsets1",
             "benchmark://hpctoolkit-cpu-v0/conv2d",
             # "benchmark://hpctoolkit-cpu-v0/nanosleep",
-
             # cbench-v1
             "benchmark://cbench-v1/bitcount",
             "benchmark://cbench-v1/qsort",
@@ -219,7 +193,6 @@ def main():
             "benchmark://cbench-v1/tiff2rgba",
             "benchmark://cbench-v1/tiffdither",
             "benchmark://cbench-v1/tiffmedian",
-
             # csmith
             "generator://csmith-v0/0",
             "generator://csmith-v0/1",
@@ -229,7 +202,6 @@ def main():
             "generator://csmith-v0/23",
             "generator://csmith-v0/33",
             "generator://csmith-v0/1123",
-
             # ===========================
             # npb
             # "benchmark://npb-v0/3"
@@ -240,7 +212,6 @@ def main():
             # clang-12: error: linker command failed with exit code 1 (use -v to see invocation
             # ====================================
             #
-
             # ====================================
             # "benchmark://blas-v0/1",
             # blas
@@ -253,7 +224,6 @@ def main():
             # /home/shoshijak/Documents/blas_ir/BLAS-3.8.0/dtbsv.f:232: undefined reference to `lsame_'
             # /home/shoshijak/Documents/blas_ir/BLAS-3.8.0/dtbsv.f:232: undefined reference to `lsame_'
             # ====================================
-
             # ====================================
             # Maybe we could access to the .c code directly.
             # "benchmark://anghabench-v1/8cc/extr_buffer.c_buf_append"
@@ -262,7 +232,6 @@ def main():
             # /tmp/benchmark-downloaded-36dcc2.o: In function `buf_append':
             # extr_buffer.c_buf_append.c:(.text+0x3e): undefined reference to `buf_write'
             # ====================================
-
             # chstone seems to work (.c is present)
             "benchmark://chstone-v0/adpcm",
             "benchmark://chstone-v0/aes",
@@ -292,7 +261,7 @@ def main():
                 print(reward)
                 # print(observation)
                 print(info)
-                perf_dict = pickle.loads(observation[0])                
+                perf_dict = pickle.loads(observation[0])
                 print(perf_dict)
 
                 pdb.set_trace()

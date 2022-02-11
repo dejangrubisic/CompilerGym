@@ -3,29 +3,27 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
+import os
 import pdb
 import subprocess
-import os
-import logging
-
-from pathlib import Path
-
 from copy import deepcopy as deepcopy
-import compiler_gym.third_party.llvm as llvm
-from compiler_gym.util.commands import run_command, Popen
-from compiler_gym.service.proto import Benchmark
+from pathlib import Path
 from signal import Signals
 from typing import List, Optional, Tuple
+
 import utils
 
+import compiler_gym.third_party.llvm as llvm
+from compiler_gym.service.proto import Benchmark
+from compiler_gym.util.commands import Popen, run_command
 
 
 ## Build benchmarks
 class BenchmarkBuilder:
-    
     def __init__(self, working_directory: Path, benchmark: Benchmark):
         # pdb.set_trace()
-        print(benchmark.uri)
+        # print('\nBenchmark: ', benchmark.uri)
 
         self.clang = str(llvm.clang_path())
         self.llvm_dis = str(llvm.llvm_dis_path())
@@ -41,42 +39,49 @@ class BenchmarkBuilder:
         self.bc_download_path = str(self.working_dir / "benchmark-downloaded.bc")
         self.exe_path = str(self.working_dir / "benchmark.exe")
 
-        # TODO: Temporary
+        self.compile_ll = {
+            # 'opt':  [self.opt, "--debugify", "-o", self.bc_path, self.llvm_path],
+            "opt": [self.opt, "-o", self.bc_path, self.llvm_path],
+            "cmp": [
+                self.clang,
+                self.bc_path,
+                "-o",
+                self.exe_path,
+                "-lm",
+            ],  # "-nostartfiles"
+            "save": [self.llvm_dis, "-o", self.llvm_path, self.bc_path],
+        }
         self.pre_run_cmd = []
         self.run_cmd = [self.exe_path]
 
-        self.compile_ll = {
-            'opt':  [self.opt, "--debugify", "-o", self.bc_path, self.llvm_path],
-            'cmp':  [self.clang, self.bc_path, "-o", self.exe_path, '-lm'], # "-nostartfiles"
-            'save': [self.llvm_dis, "-o", self.llvm_path, self.bc_path]
-        }
-
         self.prepare_benchmark(benchmark)
-        
 
     def prepare_benchmark(self, benchmark: Benchmark):
-        self.save_to_ll(benchmark)        
+        self.save_to_ll(benchmark)
+        self.print_header_ll()
+
         self.set_build_run_cmd(benchmark)
+        print("\n compile: ")
+        utils.print_list(list(self.compile_ll.values()))
+        print("\n pre_run_cmd: ")
+        utils.print_list(self.pre_run_cmd)
+        print("\n run_cmd: ")
+        utils.print_list(self.run_cmd)
+
+        # pdb.set_trace()
         self.execute_pre_run_cmd()
         self.apply_action("-O0")
 
-
     def save_to_ll(self, benchmark: Benchmark):
-        print(benchmark.uri)
 
-        if benchmark.program.contents.startswith(b'BC'):        
+        if benchmark.program.contents.startswith(b"BC"):
             _src_path = str(self.working_dir / "benchmark-downloaded.bc")
-            with open(_src_path, 'wb') as f:
+            with open(_src_path, "wb") as f:
                 f.write(benchmark.program.contents)
-            
-            compile_to_ll = [
-                self.llvm_dis, 
-                "-o", 
-                self.llvm_path, 
-                _src_path
-            ]
 
-        else: # If Benchmark is in C
+            compile_to_ll = [self.llvm_dis, "-o", self.llvm_path, _src_path]
+
+        else:  # If Benchmark is in C
             _src_path = str(self.working_dir / "benchmark.c")
             with open(_src_path, "wb") as f:
                 f.write(benchmark.program.contents)
@@ -88,8 +93,7 @@ class BenchmarkBuilder:
                 "-S",
                 "-emit-llvm",
                 _src_path,
-            ]     
-
+            ]
 
         # Transform input code representation to ll format
         run_command(
@@ -97,26 +101,29 @@ class BenchmarkBuilder:
             timeout=30,
         )
 
+    def print_header_ll(self):
+        with open(self.llvm_path, "r") as f:
+            for i in range(2):
+                s = f.readline()
+
+            print(s)
 
     def set_build_run_cmd(self, benchmark):
 
-        if hasattr(benchmark, 'dynamic_config'):
-            if hasattr(benchmark.dynamic_config, 'build_cmd'):                
+        if hasattr(benchmark, "dynamic_config"):
+            if hasattr(benchmark.dynamic_config, "build_cmd"):
                 self.prepare_build_cmd(benchmark.dynamic_config.build_cmd)
-    
-            if hasattr(benchmark.dynamic_config, 'pre_run_cmd'):
+
+            if hasattr(benchmark.dynamic_config, "pre_run_cmd"):
                 self.prepare_pre_run_cmd(benchmark.dynamic_config.pre_run_cmd)
-        
-            if hasattr(benchmark.dynamic_config, 'run_cmd'):
+
+            if hasattr(benchmark.dynamic_config, "run_cmd"):
                 self.prepare_run_cmd(benchmark.dynamic_config.run_cmd)
-
-
-
 
     def execute_pre_run_cmd(self):
         # The stdout may be redirected to a file.
         for cmd in self.pre_run_cmd:
-            pre_run_cmd_with_redirection(cmd, self.working_dir)
+            self.pre_run_cmd_with_redirection(cmd, self.working_dir)
 
     def pre_run_cmd_with_redirection(cmd, working_dir):
         """
@@ -125,19 +132,18 @@ class BenchmarkBuilder:
         """
         # FIXME: This function assumes that the last argument may contain the files
         #   to which the stdout should be redirected.
-        if cmd[-1].startswith('>'):
+        if cmd[-1].startswith(">"):
             # Remove '>' from file name and prepend working_dir path
             file_path = working_dir / cmd[-1][1:]
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 # Remove the stdout redirection from the cmd.
                 cmd = cmd[:-1]
                 utils.run_command_stdout_redirect(cmd, timeout=30, output_file=f)
         else:
             # Execute the command with no redirection
             run_command(cmd, timeout=30)
-            
 
-    def apply_action(self, opt: str):        
+    def apply_action(self, opt: str):
         compile_ll = deepcopy(self.compile_ll)
         compile_ll["opt"].insert(1, opt)
 
@@ -147,7 +153,6 @@ class BenchmarkBuilder:
                 timeout=30,
             )
 
-    
     # Prepare build, pre_run and run commands
     def prepare_build_cmd(self, build_cmd):
         """
@@ -173,8 +178,7 @@ class BenchmarkBuilder:
             # Append the output file of the compile command.
             compile_cmd.extend(["-o", self.exe_path])
             # Add the last compile command.
-            self.compile_ll['cmp'] = compile_cmd
-
+            self.compile_ll["cmp"] = compile_cmd
 
     def prepare_pre_run_cmd(self, pre_run_cmd):
         """
@@ -193,7 +197,6 @@ class BenchmarkBuilder:
                 # append pre_run_cmd list to the pre_run_cmd
                 self.pre_run_cmd.append(pre_run_cmd_list)
 
-
     def prepare_run_cmd(self, run_cmd):
         """
         run_cmd is in the following format:
@@ -207,11 +210,10 @@ class BenchmarkBuilder:
         }
         Only argument is considered for now.
         """
-        print("________ Run command: \n", run_cmd)
         run_cmd = utils.proto_buff_container_to_list(run_cmd.argument)
         if run_cmd:
             # Just for the debugging purposes.
-            assert run_cmd[0] == './a.out'
+            assert run_cmd[0] == "./a.out"
             # Replace ./a.out with the exe_path
             run_cmd[0] = self.exe_path
             self.run_cmd = run_cmd

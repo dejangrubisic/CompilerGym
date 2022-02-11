@@ -5,23 +5,15 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 """An example CompilerGym service in python."""
-from cmath import nan
+
 import logging
 import os
 import pdb
-import pickle
-import shutil
-import subprocess
-
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import hatchet as ht
-import numpy as np
-import programl as pg
-import pandas as pd
-import os
 import benchmark_builder
+from profilers import hpctoolkit, perf, programl, programl_hpctoolkit, runtime
 
 import compiler_gym.third_party.llvm as llvm
 from compiler_gym import site_data_path
@@ -41,14 +33,6 @@ from compiler_gym.service.proto import (
 from compiler_gym.service.runtime import create_and_run_compiler_gym_service
 from compiler_gym.util.commands import run_command
 
-
-from profilers import (
-    runtime,
-    perf,
-    hpctoolkit,
-    programl,
-    programl_hpctoolkit
-)
 
 class HPCToolkitCompilationSession(CompilationSession):
     """Represents an instance of an interactive compilation session."""
@@ -87,6 +71,12 @@ class HPCToolkitCompilationSession(CompilationSession):
             ),
         ),
         ObservationSpace(
+            name="perf",
+            binary_size_range=ScalarRange(
+                min=ScalarLimit(value=0), max=ScalarLimit(value=1e5)
+            ),
+        ),
+        ObservationSpace(
             name="hpctoolkit",
             binary_size_range=ScalarRange(
                 min=ScalarLimit(value=0), max=ScalarLimit(value=1e5)
@@ -104,13 +94,6 @@ class HPCToolkitCompilationSession(CompilationSession):
                 min=ScalarLimit(value=0), max=ScalarLimit(value=1e5)
             ),
         ),
-        ObservationSpace(
-            name="perf",
-            binary_size_range=ScalarRange(
-                min=ScalarLimit(value=0), max=ScalarLimit(value=1e5)
-            ),
-        ),
-
     ]
 
     def __init__(
@@ -123,19 +106,25 @@ class HPCToolkitCompilationSession(CompilationSession):
         super().__init__(working_directory, action_space, benchmark)
         logging.info("Started a compilation session for %s", benchmark.uri)
         self._action_space = action_space
-        
-        print("\n", str(working_directory), "\n")
+
         os.chdir(str(working_directory))
+        print("\n", str(working_directory), "\n")
+        # pdb.set_trace()
 
-        pdb.set_trace()
-
-        self.benchmark  = benchmark_builder.BenchmarkBuilder(working_directory, benchmark)
-        self.runtime    = runtime.Profiler(self.benchmark.run_cmd)
-        self.perf       = perf.Profiler(self.benchmark.run_cmd)
-        self.hpctoolkit = hpctoolkit.Profiler(self.benchmark.run_cmd, self.benchmark.llvm_path)
-        self.programl   = programl.Profiler(self.benchmark.run_cmd, self.benchmark.llvm_path)
-        self.programl_hpctoolkit = programl_hpctoolkit.Profiler(self.benchmark.run_cmd, self.benchmark.llvm_path)
-
+        self.benchmark = benchmark_builder.BenchmarkBuilder(
+            working_directory, benchmark
+        )
+        self.runtime = runtime.Profiler(self.benchmark.run_cmd)
+        self.perf = perf.Profiler(self.benchmark.run_cmd)
+        self.hpctoolkit = hpctoolkit.Profiler(
+            self.benchmark.run_cmd, self.benchmark.llvm_path
+        )
+        self.programl = programl.Profiler(
+            self.benchmark.run_cmd, self.benchmark.llvm_path
+        )
+        self.programl_hpctoolkit = programl_hpctoolkit.Profiler(
+            self.benchmark.run_cmd, self.benchmark.llvm_path
+        )
 
     def apply_action(self, action: Action) -> Tuple[bool, Optional[ActionSpace], bool]:
 
@@ -168,27 +157,21 @@ class HPCToolkitCompilationSession(CompilationSession):
         logging.info("Computing observation from space %s", observation_space.name)
 
         if observation_space.name == "runtime":
-            print("get_observation: runtime")
             return self.runtime.get_observation()
 
         if observation_space.name == "perf":
-            print("get_observation: perf")            
             return self.perf.get_observation()
 
         elif observation_space.name == "hpctoolkit":
-            print("get_observation: hpctoolkit")            
             return self.hpctoolkit.get_observation()
 
         elif observation_space.name == "programl":
-            print("get_observation: programl")            
             return self.programl.get_observation()
 
         elif observation_space.name == "programl_hpctoolkit":
-            print("get_observation: programl_hpctoolkit")
             return self.programl_hpctoolkit.get_observation()
         else:
             raise KeyError(observation_space.name)
-
 
 
 if __name__ == "__main__":

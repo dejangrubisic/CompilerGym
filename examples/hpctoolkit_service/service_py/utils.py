@@ -1,15 +1,17 @@
+import pdb
 import subprocess
-
+from signal import Signals
 from typing import List, Optional, Tuple
 
-from compiler_gym.util.commands import run_command, Popen
-from signal import Signals
-
+from compiler_gym.util.commands import Popen, run_command
 
 
 def run_command_stdout_redirect(cmd: List[str], timeout: int, output_file):
     with Popen(
-        cmd, stdout=output_file, stderr=subprocess.PIPE, universal_newlines=True,
+        cmd,
+        stdout=output_file,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
     ) as process:
         stdout, stderr = process.communicate(timeout=timeout)
         if process.returncode:
@@ -24,7 +26,7 @@ def run_command_stdout_redirect(cmd: List[str], timeout: int, output_file):
                 f"Compilation job failed with returncode {returncode}\n"
                 f"Command: {' '.join(cmd)}\n"
                 f"Stderr: {stderr.strip()}"
-            )  
+            )
 
 
 def proto_buff_container_to_list(container):
@@ -34,3 +36,21 @@ def proto_buff_container_to_list(container):
     # then generating the list can be omitted. Uncomment the following statement instead.
     # compile_cmd = build_cmd.argument
     return compile_cmd
+
+
+def print_list(cmd):
+    depth = lambda L: isinstance(L, list) and max(map(depth, L)) + 1
+
+    d = 0
+    if len(cmd):
+        d = depth(cmd)
+
+    if d == 1:
+        print(*cmd)
+    elif d == 2:
+        for x in cmd:
+            print(*x, sep=" ")
+    else:
+        print(cmd)
+
+    print("\n")
