@@ -1,9 +1,25 @@
 import pdb
 import subprocess
+import signal
+
 from signal import Signals
 from typing import List, Optional, Tuple
 
 from compiler_gym.util.commands import Popen, run_command
+
+
+
+class timeout:
+    def __init__(self, seconds=1, error_message='Timeout'):
+        self.seconds = seconds
+        self.error_message = error_message
+    def handle_timeout(self, signum, frame):
+        raise TimeoutError(self.error_message)
+    def __enter__(self):
+        signal.signal(signal.SIGALRM, self.handle_timeout)
+        signal.alarm(self.seconds)
+    def __exit__(self, type, value, traceback):
+        signal.alarm(0)
 
 
 def run_command_stdout_redirect(cmd: List[str], timeout: int, output_file):

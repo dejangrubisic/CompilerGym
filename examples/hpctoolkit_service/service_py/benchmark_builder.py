@@ -56,18 +56,6 @@ class BenchmarkBuilder:
             "save": [self.llvm_dis, "-o", self.llvm_new_path, self.bc_path],
         }
         
-        # self.compile_ll = {
-        #     # 'opt':  [self.opt, "--debugify", "-o", self.bc_path, self.llvm_path],
-        #     "opt": ["opt", "-o", self.bc_path, self.llvm_path],
-        #     "cmp": [
-        #         "clang",
-        #         self.bc_path,
-        #         "-o",
-        #         self.exe_path,
-        #         "-lm",
-        #     ],  # "-nostartfiles"
-        #     "save": ['llvm-dis', "-o", self.llvm_new_path, self.bc_path],
-        # }
         
         self.pre_run_cmd = []
         self.run_cmd = [self.exe_path]
@@ -90,6 +78,7 @@ class BenchmarkBuilder:
         # pdb.set_trace()
         self.execute_pre_run_cmd()
         self.apply_action("-O0")
+        self.check_if_terminate()
 
     def save_to_ll(self, benchmark: Benchmark):
 
@@ -199,7 +188,12 @@ class BenchmarkBuilder:
 
         return action_had_effect
 
-
+    def check_if_terminate(self):            
+        run_command(
+            self.run_cmd,
+            timeout=self.timeout_sec,
+        )
+        
     # Prepare build, pre_run and run commands
     def prepare_build_cmd(self, build_cmd):
         """
