@@ -10,8 +10,9 @@ from compiler_gym.util.commands import run_command
 
 
 class Profiler:
-    def __init__(self, run_cmd, src_path=None):
+    def __init__(self, run_cmd, timeout_sec, src_path=None):
         self.run_cmd = run_cmd
+        self.timeout_sec = timeout_sec
         # TODO: Figure out how to collect all in multiple runs
         self.metrics_list = [
             "cycles",  # Reward
@@ -62,7 +63,7 @@ class Profiler:
 
         stdout = run_command(
             perf_cmd,
-            timeout=30,
+            timeout=self.timeout_sec,
         )
         return self.perf_parse_to_dict(metric_file_name)
 

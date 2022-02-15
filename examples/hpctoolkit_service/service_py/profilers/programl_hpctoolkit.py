@@ -18,11 +18,12 @@ from profilers import (
 
 
 class Profiler:
-    def __init__(self, run_cmd, src_path=None):
+    def __init__(self, run_cmd, timeout_sec, src_path=None):
         self.run_cmd = run_cmd
+        self.timeout_sec = timeout_sec
         self.llvm_path = src_path
-        self.hpctoolkit = hpctoolkit.Profiler(run_cmd, src_path)
-        self.programl = programl.Profiler(run_cmd, src_path)
+        self.hpctoolkit = hpctoolkit.Profiler(run_cmd, timeout_sec, src_path)
+        self.programl = programl.Profiler(run_cmd, timeout_sec, src_path)
 
         # TODO: Get rid of this
         # List of metrics collected from observation space

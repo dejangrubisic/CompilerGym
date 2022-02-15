@@ -18,8 +18,11 @@ import subprocess
 from math import isnan
 from pathlib import Path
 from typing import Iterable
+from compiler_gym.service.connection import ServiceError
 
 import gym
+
+import compiler_gym
 
 from compiler_gym.datasets import Benchmark, BenchmarkUri, Dataset
 from compiler_gym.envs.llvm.datasets import (
@@ -210,15 +213,28 @@ def main():
             if bench in blacklisted:
                 continue
 
-            env.reset(benchmark=bench)
-            print("*********************", bench, "*********************")
+            try:
+                env.reset(benchmark=bench)
+                # env.send_param("timeout_sec", "1")
+            except ServiceError:
+                print("AGENT: Timeout Error Reset")
+                continue
+
+
+            print("********************* Train on ", bench, "*********************")
             for i in range(1):
                 print("Main: step = ", i)
-                observation, reward, done, info = env.step(
-                    action=env.action_space.sample(),
-                    observations=["perf"],
-                    rewards=["perf"],
-                )
+                try:
+                    observation, reward, done, info = env.step(
+                        action=env.action_space.sample(),
+                        observations=["perf"],
+                        rewards=["perf"],
+                    )
+                except ServiceError:
+                    print("AGENT: Timeout Error Step")
+                    continue
+                    
+
                 print(reward)
                 # print(observation)
                 print(info)
@@ -231,8 +247,10 @@ def main():
                     print(bench, " Failed with Nan reward")
                     return
 
-                if done:
-                    env.reset()
+                if done:                    
+                    continue
+
+
         print("I run %d benchmarks." % inc)
 
 

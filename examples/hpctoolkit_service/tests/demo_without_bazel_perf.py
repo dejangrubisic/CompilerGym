@@ -36,6 +36,7 @@ from compiler_gym.third_party import llvm
 from compiler_gym.util.logging import init_logging
 from compiler_gym.util.registration import register
 from compiler_gym.util.runfiles_path import runfiles_path, site_data_path
+from compiler_gym.service.connection import ServiceError
 
 reward_metric = "REALTIME (sec) (I)"  # "time (inc)"
 
@@ -68,17 +69,19 @@ class PerfReward(Reward):
         self.baseline_cycles = 0
 
     def reset(self, benchmark: str, observation_view):
-        print("Reward Perf: reset")
         del benchmark  # unused
         perf_dict = pickle.loads(observation_view["perf"])
-        self.baseline_cycles = perf_dict["cycles"]
+        self.baseline_cycles = int(perf_dict["cycles"])
+        print("Reward Perf: reset reward = ", self.baseline_cycles)
 
     def update(self, action, observations, observation_view):
-        print("Reward Perf: update")
-
         perf_dict = pickle.loads(observations[0])
-        new_cycles = perf_dict["cycles"]
+        new_cycles = int(perf_dict["cycles"])
+
+        print("Reward Perf: update reward = ", new_cycles)
+
         return float(self.baseline_cycles - new_cycles) / self.baseline_cycles
+
 
 
 class HPCToolkitDataset(Dataset):
@@ -249,15 +252,24 @@ def main():
 
         inc = 0
         for bench in benchmark_to_process:
-            env.reset(benchmark=bench)
+            try:
+                env.reset(benchmark=bench)
+            except ServiceError:
+                print("AGENT: Timeout Error Reset")
+            
 
             for i in range(2):
                 print("Main: step = ", i)
-                observation, reward, done, info = env.step(
-                    action=env.action_space.sample(),
-                    observations=["perf"],
-                    rewards=["perf"],
-                )
+                try:
+                    observation, reward, done, info = env.step(
+                        action=env.action_space.sample(),
+                        observations=["perf"],
+                        rewards=["perf"],
+                    )
+                except ServiceError:
+                    print("AGENT: Timeout Error Step")
+                    continue
+
                 print(reward)
                 # print(observation)
                 print(info)

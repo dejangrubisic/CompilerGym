@@ -11,8 +11,9 @@ from compiler_gym.service.proto import (
 
 
 class Profiler:
-    def __init__(self, run_cmd, src_path=None):
+    def __init__(self, run_cmd, timeout_sec, src_path=None):
         self.run_cmd = run_cmd
+        self.timeout_sec = timeout_sec
         self.llvm_path = src_path
 
 

@@ -33,6 +33,7 @@ from compiler_gym.third_party import llvm
 from compiler_gym.util.logging import init_logging
 from compiler_gym.util.registration import register
 from compiler_gym.util.runfiles_path import runfiles_path, site_data_path
+from compiler_gym.service.connection import ServiceError
 
 pd.set_option("display.max_columns", None)
 
@@ -166,19 +167,28 @@ def main():
 
     # Create the environment using the regular gym.make(...) interface.
     with gym.make("hpctoolkit-llvm-v0") as env:
-        # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/offsets1")
-        env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/conv2d")
-        # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/nanosleep")
 
-        # env.reset(benchmark="benchmark://cbench-v1/qsort")
+        try:
+            # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/offsets1")
+            env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/conv2d")
+            # env.reset(benchmark="benchmark://hpctoolkit-cpu-v0/nanosleep")
+
+            # env.reset(benchmark="benchmark://cbench-v1/qsort")
+        except ServiceError:
+            print("AGENT: Timeout Error Reset")
 
         for i in range(2):
             print("Main: step = ", i)
-            observation, reward, done, info = env.step(
-                action=3,#env.action_space.sample(),
-                observations=["programl_hpctoolkit"],
-                rewards=["programl_hpctoolkit"],
-            )
+            try:
+                observation, reward, done, info = env.step(
+                    action=3,#env.action_space.sample(),
+                    observations=["programl_hpctoolkit"],
+                    rewards=["programl_hpctoolkit"],
+                )
+            except ServiceError:
+                print("AGENT: Timeout Error Step")
+                continue       
+                 
             print(reward)
             print(info)
             g = pickle.loads(observation[0])

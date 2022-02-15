@@ -11,8 +11,9 @@ from compiler_gym.util.commands import run_command
 
 
 class Profiler:
-    def __init__(self, run_cmd, src_path=None):
+    def __init__(self, run_cmd, timeout_sec, src_path=None):
         self.run_cmd = run_cmd
+        self.timeout_sec = timeout_sec
         self.exe_path = run_cmd[0]
         self.llvm_path = src_path
         self.exe_struct_path = self.exe_path + ".hpcstruct"
@@ -65,7 +66,7 @@ class Profiler:
         for cmd in hpctoolkit_cmd:
             run_command(
                 cmd,
-                timeout=30,
+                timeout=self.timeout_sec,
             )
 
         g_hatchet = ht.GraphFrame.from_hpctoolkit("db")

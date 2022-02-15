@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from ctypes import util
 import logging
 import os
 import pdb
@@ -11,6 +12,7 @@ from copy import deepcopy as deepcopy
 from pathlib import Path
 from signal import Signals
 from typing import List, Optional, Tuple
+from xmlrpc.client import Boolean
 
 import utils
 
@@ -21,10 +23,11 @@ from compiler_gym.util.commands import Popen, run_command
 
 ## Build benchmarks
 class BenchmarkBuilder:
-    def __init__(self, working_directory: Path, benchmark: Benchmark):
+    def __init__(self, working_directory: Path, benchmark: Benchmark, timeout_sec: float):
         # pdb.set_trace()
         # print('\nBenchmark: ', benchmark.uri)
 
+        self.timeout_sec = timeout_sec
         self.clang = str(llvm.clang_path())
         self.llvm_dis = str(llvm.llvm_dis_path())
         self.llc = str(llvm.llc_path())
@@ -33,6 +36,7 @@ class BenchmarkBuilder:
 
         self.working_dir = working_directory
         self.llvm_path = str(self.working_dir / "benchmark.ll")
+        self.llvm_new_path = str(self.working_dir / "benchmark_new.ll")
         self.llvm_before_path = str(self.working_dir / "benchmark.previous.ll")
         self.bc_path = str(self.working_dir / "benchmark.bc")
         # vi3: Used only if the benchmark is downloaded in .bc format.
@@ -49,10 +53,25 @@ class BenchmarkBuilder:
                 self.exe_path,
                 "-lm",
             ],  # "-nostartfiles"
-            "save": [self.llvm_dis, "-o", self.llvm_path, self.bc_path],
+            "save": [self.llvm_dis, "-o", self.llvm_new_path, self.bc_path],
         }
+        
+        # self.compile_ll = {
+        #     # 'opt':  [self.opt, "--debugify", "-o", self.bc_path, self.llvm_path],
+        #     "opt": ["opt", "-o", self.bc_path, self.llvm_path],
+        #     "cmp": [
+        #         "clang",
+        #         self.bc_path,
+        #         "-o",
+        #         self.exe_path,
+        #         "-lm",
+        #     ],  # "-nostartfiles"
+        #     "save": ['llvm-dis', "-o", self.llvm_new_path, self.bc_path],
+        # }
+        
         self.pre_run_cmd = []
         self.run_cmd = [self.exe_path]
+        self.is_action_effective = False
 
         self.prepare_benchmark(benchmark)
 
@@ -98,7 +117,7 @@ class BenchmarkBuilder:
         # Transform input code representation to ll format
         run_command(
             compile_to_ll,
-            timeout=30,
+            timeout=self.timeout_sec,
         )
 
     def print_header_ll(self):
@@ -123,9 +142,9 @@ class BenchmarkBuilder:
     def execute_pre_run_cmd(self):
         # The stdout may be redirected to a file.
         for cmd in self.pre_run_cmd:
-            self.pre_run_cmd_with_redirection(cmd, self.working_dir)
+            self.pre_run_cmd_with_redirection(cmd, self.working_dir, self.timeout_sec)
 
-    def pre_run_cmd_with_redirection(cmd, working_dir):
+    def pre_run_cmd_with_redirection(self, cmd, working_dir, timeout_sec):
         """
         Pre run command might redirect the stdout to a file.
         Try to recignize this.
@@ -138,20 +157,48 @@ class BenchmarkBuilder:
             with open(file_path, "w") as f:
                 # Remove the stdout redirection from the cmd.
                 cmd = cmd[:-1]
-                utils.run_command_stdout_redirect(cmd, timeout=30, output_file=f)
+                utils.run_command_stdout_redirect(cmd, timeout=timeout_sec, output_file=f)
         else:
             # Execute the command with no redirection
-            run_command(cmd, timeout=30)
+            run_command(cmd, timeout=timeout_sec)
 
     def apply_action(self, opt: str):
         compile_ll = deepcopy(self.compile_ll)
         compile_ll["opt"].insert(1, opt)
 
+        utils.print_list(compile_ll.values())
+        # pdb.set_trace()
+
         for cmd in compile_ll.values():
             run_command(
                 cmd,
-                timeout=30,
+                timeout=self.timeout_sec,
             )
+    
+        self.is_action_effective = self.action_had_effect()
+        # pdb.set_trace()
+        # update current llvm_file
+        run_command(
+            ['mv', self.llvm_new_path, self.llvm_path],
+            timeout=self.timeout_sec,
+        )
+
+
+    def action_had_effect(self)-> Boolean:
+        # compare the IR files to check if the action had an effect
+        try:
+            subprocess.check_call(
+                ['cmp', '--silent', self.llvm_path, self.llvm_new_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=self.timeout_sec,
+            )
+            action_had_effect = False   # cmp return 0 (same files)
+        except subprocess.CalledProcessError:
+            action_had_effect = True    # cmp return 1 (different files)
+
+        return action_had_effect
+
 
     # Prepare build, pre_run and run commands
     def prepare_build_cmd(self, build_cmd):

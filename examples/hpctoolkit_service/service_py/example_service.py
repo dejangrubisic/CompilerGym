@@ -34,6 +34,12 @@ from compiler_gym.service.runtime import create_and_run_compiler_gym_service
 from compiler_gym.util.commands import run_command
 
 
+import utils
+import signal
+import sys
+
+
+
 class HPCToolkitCompilationSession(CompilationSession):
     """Represents an instance of an interactive compilation session."""
 
@@ -101,7 +107,7 @@ class HPCToolkitCompilationSession(CompilationSession):
         working_directory: Path,
         action_space: ActionSpace,
         benchmark: Benchmark,  # TODO: Dejan use Benchmark rather than hardcoding benchmark path here!
-        # use_custom_opt: bool = True,
+        timeout_sec: float = 3.0,
     ):
         super().__init__(working_directory, action_space, benchmark)
         logging.info("Started a compilation session for %s", benchmark.uri)
@@ -109,21 +115,28 @@ class HPCToolkitCompilationSession(CompilationSession):
 
         os.chdir(str(working_directory))
         print("\n", str(working_directory), "\n")
-        # pdb.set_trace()
+        pdb.set_trace()
+
+        self.timeout_sec = timeout_sec
 
         self.benchmark = benchmark_builder.BenchmarkBuilder(
-            working_directory, benchmark
+            working_directory, benchmark, timeout_sec
         )
-        self.runtime = runtime.Profiler(self.benchmark.run_cmd)
-        self.perf = perf.Profiler(self.benchmark.run_cmd)
+
+        self.runtime = runtime.Profiler(self.benchmark.run_cmd, timeout_sec)
+        
+        self.perf = perf.Profiler(self.benchmark.run_cmd, timeout_sec)
+        
         self.hpctoolkit = hpctoolkit.Profiler(
-            self.benchmark.run_cmd, self.benchmark.llvm_path
+            self.benchmark.run_cmd, timeout_sec, self.benchmark.llvm_path
         )
+        
         self.programl = programl.Profiler(
-            self.benchmark.run_cmd, self.benchmark.llvm_path
+            self.benchmark.run_cmd, timeout_sec, self.benchmark.llvm_path
         )
+        
         self.programl_hpctoolkit = programl_hpctoolkit.Profiler(
-            self.benchmark.run_cmd, self.benchmark.llvm_path
+            self.benchmark.run_cmd, timeout_sec, self.benchmark.llvm_path
         )
 
     def apply_action(self, action: Action) -> Tuple[bool, Optional[ActionSpace], bool]:
@@ -147,8 +160,8 @@ class HPCToolkitCompilationSession(CompilationSession):
 
         self.benchmark.apply_action(opt)
 
-        # TODO: Dejan properly implement these
-        action_had_no_effect = False
+        action_had_no_effect = not self.benchmark.is_action_effective
+
         end_of_session = False
         new_action_space = None
         return (end_of_session, new_action_space, action_had_no_effect)
