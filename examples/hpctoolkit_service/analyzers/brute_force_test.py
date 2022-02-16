@@ -1,0 +1,60 @@
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+"""Unit tests for //compiler_gym/bin:brute_force."""
+import tempfile
+from pathlib import Path
+
+import gym
+from brute_force import run_brute_force
+
+
+def test_run_brute_force_smoke_test():
+    with tempfile.TemporaryDirectory() as tmp:
+        outdir = Path(tmp)
+        run_brute_force(
+            make_env=lambda: gym.make("llvm-ic-v0", benchmark="cbench-v1/crc32"),
+            action_names=["-sroa", "-mem2reg"],
+            episode_length=2,
+            outdir=outdir,
+            nproc=1,
+            chunksize=2,
+        )
+
+        assert (outdir / "meta.json").is_file()
+        assert (outdir / "results.csv").is_file()
+
+
+import sys
+sys.path.insert(1, '/home/dx4/tools/CompilerGym/examples/hpctoolkit_service/tests')
+
+import demo_perf_csmith as perf
+
+
+
+
+
+def test_run_brute_force_perf():
+    with tempfile.TemporaryDirectory() as tmp:
+        outdir = Path(tmp)
+
+        perf.register_env()
+
+        
+        # for bench in env.datasets["generator://csmith-v0"]:
+        run_brute_force(
+            make_env=lambda: gym.make("perf-v0"),
+            action_names=["-sroa", "-mem2reg"],
+            episode_length=2,
+            outdir=outdir,
+            nproc=1,
+            chunksize=2,
+        )
+        
+        assert (outdir / "meta.json").is_file()
+        assert (outdir / "results.csv").is_file()
+
+
+if __name__ == '__main__':
+    test_run_brute_force_perf()

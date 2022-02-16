@@ -5,7 +5,8 @@
 """Smoke test for examples/hpctoolkit_service/demo_without_bazel.py"""
 from flaky import flaky
 from hpctoolkit_service.demo_without_bazel import main
-
+import pdb
+pdb.set_trace()
 
 @flaky
 def test_demo_without_bazel():

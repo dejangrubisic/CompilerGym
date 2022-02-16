@@ -42,126 +42,34 @@ from compiler_gym.util.logging import init_logging
 from compiler_gym.util.registration import register
 from compiler_gym.util.runfiles_path import runfiles_path, site_data_path
 
-reward_metric = "REALTIME (sec) (I)"  # "time (inc)"
+
+# TODO: Figure out how to include compiler_gym.examples.hpctoolkit_service.utils
+# from compiler_gym.examples.hpctoolkit_service import utils
+# Temporary until we find a way to include ^^
+import sys
+sys.path.insert(0, "/home/dx4/tools/CompilerGym/examples/hpctoolkit_service")
+import utils
 
 
-HPCTOOLKIT_PY_SERVICE_BINARY: Path = Path(
-    "hpctoolkit_service/service_py/example_service.py"
-)
-assert HPCTOOLKIT_PY_SERVICE_BINARY.is_file(), "Service script not found"
-
-# BENCHMARKS_PATH: Path = runfiles_path("examples/hpctoolkit_service/benchmarks")
-BENCHMARKS_PATH: Path = (
-    "/home/vi3/CompilerGym/examples/hpctoolkit_service/benchmarks/cpu-benchmarks"
-)
-
-HPCTOOLKIT_HEADER: Path = Path(
-    "/home/vi3/CompilerGym/compiler_gym/third_party/hpctoolkit/header.h"
-)
+from rewards import perf_reward
 
 
-class PerfReward(Reward):
-    def __init__(self):
-        super().__init__(
-            id="perf",
-            observation_spaces=["perf"],
-            default_value=0,
-            default_negates_returns=True,
-            deterministic=False,
-            platform_dependent=True,
-        )
-        self.baseline_cycles = 0
-
-    def reset(self, benchmark: str, observation_view):
-        del benchmark  # unused
-        perf_dict = pickle.loads(observation_view["perf"])
-        self.baseline_cycles = int(perf_dict["cycles"])
-        print("Reward Perf: reset reward = ", self.baseline_cycles)
-
-    def update(self, action, observations, observation_view):
-        perf_dict = pickle.loads(observations[0])
-        new_cycles = int(perf_dict["cycles"])
-
-        print("Reward Perf: update reward = ", new_cycles)
-
-        return float(self.baseline_cycles - new_cycles) / self.baseline_cycles
-
-
-class HPCToolkitDataset(Dataset):
-    def __init__(self, *args, **kwargs):
-        super().__init__(
-            name="benchmark://hpctoolkit-cpu-v0",
-            license="MIT",
-            description="HPCToolkit cpu dataset",
-            site_data_base=site_data_path("example_dataset"),
-        )
-
-        self._benchmarks = {
-            "benchmark://hpctoolkit-cpu-v0/conv2d": Benchmark.from_file_contents(
-                "benchmark://hpctoolkit-cpu-v0/conv2d",
-                self.preprocess(BENCHMARKS_PATH + "/conv2d.c"),
-            ),
-            "benchmark://hpctoolkit-cpu-v0/offsets1": Benchmark.from_file_contents(
-                "benchmark://hpctoolkit-cpu-v0/offsets1",
-                self.preprocess(BENCHMARKS_PATH + "/offsets1.c"),
-            ),
-            "benchmark://hpctoolkit-cpu-v0/nanosleep": Benchmark.from_file_contents(
-                "benchmark://hpctoolkit-cpu-v0/nanosleep",
-                self.preprocess(BENCHMARKS_PATH + "/nanosleep.c"),
-            ),
-        }
-
-    @staticmethod
-    def preprocess(src: Path) -> bytes:
-        """Front a C source through the compiler frontend."""
-        # TODO(github.com/facebookresearch/CompilerGym/issues/325): We can skip
-        # this pre-processing, or do it on the service side, once support for
-        # multi-file benchmarks lands.
-        cmd = [
-            str(llvm.clang_path()),
-            "-E",
-            "-o",
-            "-",
-            "-I",
-            str(HPCTOOLKIT_HEADER.parent),
-            src,
-        ]
-        for directory in get_system_includes():
-            cmd += ["-isystem", str(directory)]
-        return subprocess.check_output(
-            cmd,
-            timeout=300,
-        )
-
-    def benchmark_uris(self) -> Iterable[str]:
-        yield from self._benchmarks.keys()
-
-    def benchmark(self, uri: str) -> Benchmark:
-        if uri in self._benchmarks:
-            return self._benchmarks[uri]
-        else:
-            raise LookupError("Unknown program name")
-
-    def benchmark_from_parsed_uri(self, uri: BenchmarkUri) -> Benchmark:
-        # TODO: IMPORTANT
-        return self.benchmark(str(uri))
-
-
-# Register the environment for use with gym.make(...).
-register(
-    id="perf-v0",
-    entry_point="compiler_gym.envs:CompilerEnv",
-    kwargs={
-        "service": HPCTOOLKIT_PY_SERVICE_BINARY,
-        "rewards": [PerfReward()],
-        "datasets": [CsmithDataset(site_data_path("llvm-v0"), sort_order=0)],
-    },
-)
+def register_env():
+    register(
+        id="perf-v0",
+        entry_point="compiler_gym.envs:CompilerEnv",
+        kwargs={
+            "service": utils.HPCTOOLKIT_PY_SERVICE_BINARY,
+            "rewards": [perf_reward.Reward()],
+            "datasets": [CsmithDataset(site_data_path("llvm-v0"), sort_order=0)],
+        },
+    )
 
 
 def main():
     # Use debug verbosity to print out extra logging information.
     init_logging(level=logging.DEBUG)
+    register_env()
 
     blacklisted = [
         "generator://csmith-v0/20",
