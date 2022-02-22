@@ -28,18 +28,10 @@ from compiler_gym.util.logging import init_logging
 from compiler_gym.util.registration import register
 from compiler_gym.util.runfiles_path import runfiles_path, site_data_path
 from compiler_gym.service.connection import ServiceError
-
-
-
-# TODO: Figure out how to include compiler_gym.examples.hpctoolkit_service.utils
-# from compiler_gym.examples.hpctoolkit_service import utils
-# Temporary until we find a way to include ^^
-import sys
-sys.path.insert(0, "/home/dx4/tools/CompilerGym/examples/hpctoolkit_service")
 import utils
 
-from rewards import hpctoolkit_reward
-from datasets import hpctoolkit_dataset
+from agent_py.rewards import hpctoolkit_reward
+from agent_py.datasets import hpctoolkit_dataset
 
 
 def register_env():

@@ -4,16 +4,10 @@ from compiler_gym.util.runfiles_path import site_data_path
 from compiler_gym.third_party import llvm
 from typing import Iterable
 import subprocess
-
-
 from pathlib import Path
 
-
-# TODO: Figure out how to include compiler_gym.examples.hpctoolkit_service.utils
-# from compiler_gym.examples.hpctoolkit_service import utils
-# Temporary until we find a way to include ^^
 import sys
-sys.path.insert(0, "/home/dx4/tools/CompilerGym/examples/hpctoolkit_service")
+sys.path.insert(0, Path(__file__).parent.parent.parent.resolve())
 import utils
 
 
@@ -21,7 +15,6 @@ import utils
 BENCHMARKS_PATH: Path = Path(
     utils.hpctoolkit_service_path / "benchmarks/cpu-benchmarks"
 )
-
 
 
 class Dataset(Dataset):
