@@ -127,12 +127,12 @@ class HPCToolkitDataset(Dataset):
             raise LookupError("Unknown program name")
 
 
-register(
-    id="hpctoolkit-llvm",
-    entry_point="compiler_gym.envs:CompilerEnv",
-    kwargs={
-        "service": HPCTOOLKIT_PY_SERVICE_BINARY,
-        "rewards": [RuntimeReward(), HPCToolkitReward()],
-        "datasets": [HPCToolkitDataset()],
-    },
-)
+# register(
+#     id="hpctoolkit-llvm",
+#     entry_point="compiler_gym.envs:CompilerEnv",
+#     kwargs={
+#         "service": HPCTOOLKIT_PY_SERVICE_BINARY,
+#         "rewards": [RuntimeReward(), HPCToolkitReward()],
+#         "datasets": [HPCToolkitDataset()],
+#     },
+# )

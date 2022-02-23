@@ -58,8 +58,8 @@ class Profiler:
             + self.run_cmd
         )
 
-        print("\nPerf get_observations: ")
-        utils.print_list(perf_cmd)
+        # print("\nPerf get_observations: ")
+        # utils.print_list(perf_cmd)
 
         stdout = run_command(
             perf_cmd,

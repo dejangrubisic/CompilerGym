@@ -114,8 +114,8 @@ class HPCToolkitCompilationSession(CompilationSession):
         self._action_space = action_space
 
         os.chdir(str(working_directory))
-        print("\n", str(working_directory), "\n")
-        pdb.set_trace()
+        # print("\n", str(working_directory), "\n")
+        # pdb.set_trace()
 
         self.timeout_sec = timeout_sec
 
