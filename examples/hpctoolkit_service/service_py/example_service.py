@@ -38,27 +38,27 @@ import utils
 import signal
 import sys
 
-
+import gym
 
 class HPCToolkitCompilationSession(CompilationSession):
     """Represents an instance of an interactive compilation session."""
 
     compiler_version: str = "1.0.0"
 
+    llvm_env = gym.make("llvm-v0")
+
     action_spaces = [
         ActionSpace(
-            name="llvm",
+            name="llvm-hpctoolkit",
             choice=[
                 ChoiceSpace(
-                    name="optimization_choice",
+                    name="hpctoolkit-optimization_choice",
                     named_discrete_space=NamedDiscreteSpace(
-                        value=[
-                            "-O0",
-                            "-O1",
-                            "-O2",
-                            "-O3",
-                        ],
-                    ),
+                        # Use all flags from the llvm_env.
+                        value=llvm_env.action_space.flags,
+                        # Interpret NamedDiscrete as CommandLine.
+                        is_commandline=True
+                    )
                 )
             ],
         ),
@@ -114,8 +114,8 @@ class HPCToolkitCompilationSession(CompilationSession):
         self._action_space = action_space
 
         os.chdir(str(working_directory))
-        print("\n", str(working_directory), "\n")
-        pdb.set_trace()
+        # print("\n", str(working_directory), "\n")
+        # pdb.set_trace()
 
         self.timeout_sec = timeout_sec
 

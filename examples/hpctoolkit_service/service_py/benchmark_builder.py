@@ -155,7 +155,7 @@ class BenchmarkBuilder:
         compile_ll = deepcopy(self.compile_ll)
         compile_ll["opt"].insert(1, opt)
 
-        utils.print_list(compile_ll.values())
+        # utils.print_list(compile_ll.values())
         # pdb.set_trace()
 
         for cmd in compile_ll.values():
