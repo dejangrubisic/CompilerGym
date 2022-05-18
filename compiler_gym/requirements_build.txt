@@ -1,3 +1,4 @@
 -r requirements.txt
 grpcio_tools>=1.32.0
-setuptools
+setuptools<59 # v59 causes pkg_resources.require in test_setuptools_version to fail
+

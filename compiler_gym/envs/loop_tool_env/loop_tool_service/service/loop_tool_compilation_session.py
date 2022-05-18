@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 # Copyright (c) Facebook, Inc. and its affiliates.
 #
 # This source code is licensed under the MIT license found in the
@@ -9,11 +10,23 @@ from functools import reduce
 from pathlib import Path
 from typing import Optional, Tuple
 
-import loop_tool_py as lt
+import pdb
+
+import os
+import logging
+
+import pkg_resources
+installed_packages = pkg_resources.working_set
+installed_packages_list = sorted(["%s==%s" % (i.key, i.version) for i in installed_packages])
+print(installed_packages_list)
+pdb.set_trace()
+
+import benchmark_builder
 import numpy as np
 import pkg_resources
 
-from compiler_gym.errors import EnvironmentNotSupported
+
+from compiler_gym.service.runtime import create_and_run_compiler_gym_service
 from compiler_gym.service import CompilationSession
 from compiler_gym.service.proto import (
     ActionSpace,
@@ -29,13 +42,11 @@ from compiler_gym.service.proto import (
     StringSpace,
 )
 
-logger = logging.getLogger(__name__)
-
 
 class LoopToolCompilationSession(CompilationSession):
     """Represents an instance of an interactive loop_tool session."""
 
-    compiler_version: str = pkg_resources.get_distribution("loop-tool-py").version
+    compiler_version: str = "1.0.1"
 
     # keep it simple for now: 1 variable, 1 nest
     action_spaces = [
@@ -100,16 +111,24 @@ class LoopToolCompilationSession(CompilationSession):
         self, working_directory: Path, action_space: ActionSpace, benchmark: Benchmark
     ):
         super().__init__(working_directory, action_space, benchmark)
-        self.action_space = action_space
+
+        os.chdir(str(working_directory))
+        logging.critical(f"\n\nWorking_dir = {str(working_directory)}\n")
+
+        pdb.set_trace()
+        lt.deserialize(benchmark.program)
+
         if "cuda" in benchmark.uri:
+            raise NotImplementedError("Cuda not supported")
             self.backend = "cuda"
             lt.set_default_hardware("cuda")
         else:
             self.backend = "cpu"
+        
         if self.backend not in lt.backends():
-            raise EnvironmentNotSupported(
-                f"Failed to load {self.backend} dataset for loop_tool.  Have you installed all required dependecies?  See <https://facebookresearch.github.io/CompilerGym/envs/loop_tool.html#installation> for details. "
-            )
+            raise KeyError("f{self.backend} not supported by loop_tool")
+
+        self.action_space = action_space
         self.ir = lt.IR()
         self.var = self.ir.create_var("a")
         r0 = self.ir.create_node("read", [], [self.var])
@@ -118,14 +137,16 @@ class LoopToolCompilationSession(CompilationSession):
         w = self.ir.create_node("write", [add], [self.var])
         self.ir.set_inputs([r0, r1])
         self.ir.set_outputs([w])
-        self.size = int(benchmark.uri.split("/")[-1])
+
+        # self.size = int(benchmark.uri.split("/")[-1])
+        self.size = 10
         self.Ap = np.random.randn(self.size)
         self.Bp = np.random.randn(self.size)
         self.order = [(self.size, 0), (1, 0), (1, 0)]
         self.thread = [1, 0, 0]
         self.cursor = 0
         self.mode = "size"
-        logger.info("Started a compilation session for %s", benchmark.uri)
+        logging.info("Started a compilation session for %s", benchmark.uri)
 
     def resize(self, increment):
         """
@@ -216,7 +237,7 @@ class LoopToolCompilationSession(CompilationSession):
         ):
             raise ValueError("Out-of-range")
 
-        logger.info("Applied action %d", choice_index)
+        logging.info("Applied action %d", choice_index)
 
         act = self.action_space.space.named_discrete.name[choice_index]
         if self.mode not in ["size", "select"]:
@@ -303,3 +324,6 @@ class LoopToolCompilationSession(CompilationSession):
             )
         else:
             raise KeyError(observation_space.name)
+
+if __name__ == "__main__":
+    create_and_run_compiler_gym_service(LoopToolCompilationSession)
