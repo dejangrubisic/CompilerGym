@@ -1,69 +1,36 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-#
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
-"""Register the loop_tool environment and reward."""
+"""This module defines and registers the example gym environments."""
 from pathlib import Path
-from typing import Iterable
-import signal
-import sys
 
+from compiler_gym.util.runfiles_path import runfiles_path, site_data_path
 
-from compiler_gym.datasets import Benchmark, Dataset, benchmark
-from compiler_gym.datasets.uri import BenchmarkUri
-from compiler_gym.spaces import Reward
-from compiler_gym.util.registration import register
-from compiler_gym.util.runfiles_path import runfiles_path
-from compiler_gym.wrappers import CompilerEnvWrapper
 from compiler_gym.envs.compiler_env import CompilerEnv
-
+from compiler_gym.spaces import Commandline, CommandlineFlag
+from compiler_gym.service.proto import Space, proto_to_action_space, CommandlineSpace
+from compiler_gym.wrappers import CompilerEnvWrapper
+from typing import cast, List, Union, Optional
+import os
+import shutil
+import sys
+import logging
+import signal
+import pickle
 import pdb
-# from loop_tool import *
-# pdb.set_trace()
-
-# class LoopToolCUDADataset(Dataset):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(
-#             name="benchmark://loop_tool-cuda-v0",
-#             license="MIT",
-#             description="loop_tool dataset",
-#         )
-
-#     def benchmark_uris(self) -> Iterable[str]:
-#         return (f"loop_tool-cuda-v0/{i}" for i in range(1, 1024 * 1024 * 8))
-
-#     def benchmark_from_parsed_uri(self, uri: BenchmarkUri) -> Benchmark:
-#         return Benchmark(proto=benchmark.BenchmarkProto(uri=str(uri)))
-
-
-# class LoopToolCPUDataset(Dataset):
-#     def __init__(self, *args, **kwargs):
-#         super().__init__(
-#             name="benchmark://loop_tool-cpu-v0",
-#             license="MIT",
-#             description="loop_tool dataset",
-#         )
-
-#     def benchmark_uris(self) -> Iterable[str]:
-#         return (f"loop_tool-cpu-v0/{i}" for i in range(1, 1024 * 1024 * 8))
-
-#     def benchmark_from_parsed_uri(self, uri: BenchmarkUri) -> Benchmark:
-#         return Benchmark(proto=benchmark.BenchmarkProto(uri=str(uri)))
+import pandas as pd
+import copy
 
 
 
-
-class LoopToolEnv(CompilerEnv):
+class LoopToolCompilerEnv(CompilerEnv):
     """
     The below functions are copied from LlvmEnv
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        
 
 
-
-class LoopToolEnvWrapper(CompilerEnvWrapper):
+class LoopToolCompilerEnvWrapper(CompilerEnvWrapper):
     def __init__(self, env, logging=False):
         super().__init__(env)
         self.logging = logging
@@ -226,17 +193,25 @@ class LoopToolEnvWrapper(CompilerEnvWrapper):
 
 
 
-# register(
-#     id="loop_tool-v0",
-#     entry_point=LoopToolEnv,
-#     kwargs={
-#         "datasets": [],
-#         "observation_space": "action_state",
-#         "reward_space": "flops",
-#         "rewards": [FLOPSReward()],
-#         "service": LOOP_TOOL_SERVICE_BINARY,
-#     },
-# )
+
+
+from compiler_gym.util.registration import register
+from loop_tool_service.paths import LOOP_TOOL_SERVICE_PY
+from loop_tool_service.service_py.rewards import runtime_reward
+from compiler_gym.envs.llvm.datasets import (
+    AnghaBenchDataset,
+    BlasDataset,
+    CBenchDataset,
+    CBenchLegacyDataset,
+    CBenchLegacyDataset2,
+    CHStoneDataset,
+    CsmithDataset,
+    NPBDataset,
+)
+
+
+from compiler_gym.util.runfiles_path import site_data_path
+
 
 def make(id: str, **kwargs):
     """Equivalent to :code:`compiler_gym.make()`."""
@@ -245,7 +220,6 @@ def make(id: str, **kwargs):
 
 
 def make_env(id, logging=False, **kwargs):
-    return LoopToolEnvWrapper(make(id, **kwargs), logging=logging)
-
+    return LoopToolCompilerEnvWrapper(make(id, **kwargs), logging=logging)
 
 

@@ -29,7 +29,7 @@ X = lt.Tensor(256, 128).set(np.random.randn(256, 128))
 W = lt.Tensor(256, 3).set(np.random.randn(256, 3))
 
 C = conv(X, W)
-with open("simple_loops/conv.txt", "w") as f:
+with open("data/conv.txt", "w") as f:
     f.write(C.ir.serialize())
 
 
@@ -37,7 +37,8 @@ A = lt.Tensor(m, k).set(np.random.randn(m, k))
 B = lt.Tensor(m, k).set(np.random.randn(m, k))
 C = mm(A, B)
 
-with open("simple_loops/mm.txt", "w") as f:
+with open("data/mm.txt", "w") as f:
     f.write(C.ir.serialize())
 
-# lt.ui(C, "/tmp/woo.c")
+pdb.set_trace()
+lt.ui(C, "/tmp/woo.c")

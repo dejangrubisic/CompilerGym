@@ -6,11 +6,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import distutils.util
-
 import setuptools
+import os
 
 version = "0.2.3"
-
 
 with open("requirements.txt") as f:
     requirements = [ln.split("#")[0].rstrip() for ln in f.readlines()]
@@ -25,13 +24,22 @@ setuptools.setup(
     install_requires=requirements,
     packages=[
         "loop_tool_service",
-        "loop_tool_service.benchmarks",
-        "loop_tool_service.service",
-        "loop_tool_service.service.datasets",
-        "loop_tool_service.service.rewards",        
+        "loop_tool_service.service_py",
+        "loop_tool_service.service_py.datasets",
+        "loop_tool_service.service_py.rewards",
+        "loop_tool_service.benchmarks",        
     ],
-
     python_requires=">=3.8",
     platforms=[distutils.util.get_platform()],
     zip_safe=False,
 )
+
+# python -m pip install .
+# According to this: https://stackoverflow.com/questions/66125129/unknownextra-error-when-installing-via-setup-py-but-not-via-pip
+
+
+###############################################################
+# Set up root directory
+###############################################################
+print("\nSet root directory: \n\nexport LOOP_TOOL_ROOT=%s"%os.getcwd())
+print("\n")

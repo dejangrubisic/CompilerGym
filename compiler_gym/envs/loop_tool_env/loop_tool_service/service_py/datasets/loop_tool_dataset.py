@@ -13,7 +13,7 @@ from . import benchmark_from_file_contents
 from compiler_gym.service.proto import BenchmarkDynamicConfig, Command
 
 
-BENCHMARKS_PATH = BENCHMARKS_PATH/"simple/data"
+BENCHMARKS_PATH = BENCHMARKS_PATH/"loop_tool_dataset/data"
 
 
 class Dataset(Dataset):
@@ -36,7 +36,7 @@ class Dataset(Dataset):
                     ),
                     run_cmd=Command(
                         argument=["./a.out"],
-                        timeout_seconds=300,
+                        timeout_seconds=3000,
                         infile=["a.out"],
                     )
                 )
