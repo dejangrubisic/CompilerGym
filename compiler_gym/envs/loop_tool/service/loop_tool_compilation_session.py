@@ -9,9 +9,13 @@
 import logging
 import os
 import pdb
+import signal
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import loop_tool as lt
+import utils
 from env import loop_tool_env
 
 import compiler_gym.third_party.llvm as llvm
@@ -20,29 +24,23 @@ from compiler_gym.service import CompilationSession
 from compiler_gym.service.proto import (
     ActionSpace,
     Benchmark,
-    Space,
-    NamedDiscreteSpace,
-    Event,
-    ObservationSpace,
-    DoubleRange,
-    SendSessionParameterReply,
     ByteSequenceSpace,
     BytesSequenceSpace,
-    Int64Range,
     CommandlineSpace,
-    StringSpace,
-    DoubleSequenceSpace,
     DoubleBox,
+    DoubleRange,
+    DoubleSequenceSpace,
     DoubleTensor,
-    FloatRange
+    Event,
+    FloatRange,
+    Int64Range,
+    NamedDiscreteSpace,
+    ObservationSpace,
+    SendSessionParameterReply,
+    Space,
+    StringSpace,
 )
 from compiler_gym.service.runtime import create_and_run_compiler_gym_service
-
-import utils
-import signal
-import sys
-
-import loop_tool as lt
 
 
 class LoopToolCompilationSession(CompilationSession):
@@ -58,28 +56,29 @@ class LoopToolCompilationSession(CompilationSession):
                 # potentially define new splits
                 named_discrete=NamedDiscreteSpace(
                     name=[
-                        "up", 
-                        "down", 
-                        "swap_up", 
-                        "swap_down", 
-                        "split_2", 
-                        "split_4", 
-                        "split_8", 
-                        "split_16", 
-                        "split_32", 
-                        "split_64", 
-                        "split_128", 
-                        "split_256", 
-                        "split_512", 
-                        "split_1024", 
-                        "split_2048", 
-                        "split_4096", 
-                        "split_8192", 
-                        "merge", 
-                        "unroll", 
-                        "vectorize", 
-                        "copy_input_0", 
-                        "copy_input_1"],
+                        "up",
+                        "down",
+                        "swap_up",
+                        "swap_down",
+                        "split_2",
+                        "split_4",
+                        "split_8",
+                        "split_16",
+                        "split_32",
+                        "split_64",
+                        "split_128",
+                        "split_256",
+                        "split_512",
+                        "split_1024",
+                        "split_2048",
+                        "split_4096",
+                        "split_8192",
+                        "merge",
+                        "unroll",
+                        "vectorize",
+                        "copy_input_0",
+                        "copy_input_1",
+                    ],
                 ),
             ),
         ),
@@ -90,8 +89,8 @@ class LoopToolCompilationSession(CompilationSession):
             name="runtime_tensor",
             space=Space(
                 double_box=DoubleBox(
-                    low = DoubleTensor(shape = [1], value=[0]),
-                    high = DoubleTensor(shape = [1], value=[float("inf")]),
+                    low=DoubleTensor(shape=[1], value=[0]),
+                    high=DoubleTensor(shape=[1], value=[float("inf")]),
                 )
             ),
             deterministic=False,
@@ -130,7 +129,6 @@ class LoopToolCompilationSession(CompilationSession):
             ),
         ),
     ]
-    
 
     def __init__(
         self,
@@ -147,15 +145,12 @@ class LoopToolCompilationSession(CompilationSession):
         pdb.set_trace()
 
         self.save_state = False
-        
+
         self.env = loop_tool_env.Environment(
-                            working_directory=working_directory,
-                            benchmark=benchmark,
-                            timeout_sec=3000
+            working_directory=working_directory, benchmark=benchmark, timeout_sec=3000
         )
 
         self.prev_observation = {}
-
 
     def handle_session_parameter(self, key: str, value: str) -> Optional[str]:
         if key == "save_state":
@@ -164,7 +159,6 @@ class LoopToolCompilationSession(CompilationSession):
         else:
             logging.critical("handle_session_parameter Unsuported key:", key)
             return ""
-
 
     def apply_action(self, action: Event) -> Tuple[bool, Optional[ActionSpace], bool]:
         num_choices = len(self.action_spaces[0].space.named_discrete.name)
@@ -183,25 +177,26 @@ class LoopToolCompilationSession(CompilationSession):
             f"Applying action {choice_index}, equivalent command-line arguments: '{action}'"
         )
 
-        action_had_effect = self.env.apply_action(action=action, save_state=self.save_state)          
+        action_had_effect = self.env.apply_action(
+            action=action, save_state=self.save_state
+        )
 
         logging.info(f"\naction_had_effect ({action}) = {action_had_effect}\n")
 
         if action_had_effect:
-            self.prev_observation = {} # Clear cache if action had an effect
+            self.prev_observation = {}  # Clear cache if action had an effect
 
         end_of_session = False
         new_action_space = None
         return (end_of_session, new_action_space, not action_had_effect)
 
-
-
-
     def get_observation(self, observation_space: ObservationSpace) -> Event:
-        logging.info(f"Computing observation from space {observation_space.name}")  
+        logging.info(f"Computing observation from space {observation_space.name}")
 
-        if observation_space.name in self.prev_observation:            
-            logging.info(f"get_observation: Fast return prev_observation {self.prev_observation}")
+        if observation_space.name in self.prev_observation:
+            logging.info(
+                f"get_observation: Fast return prev_observation {self.prev_observation}"
+            )
             return self.prev_observation[observation_space.name]
 
         if observation_space.name == "runtime":
@@ -215,13 +210,15 @@ class LoopToolCompilationSession(CompilationSession):
 
         self.prev_observation[observation_space.name] = observation
 
-        logging.info(f"get_observation: Slow return prev_observation {self.prev_observation}")
+        logging.info(
+            f"get_observation: Slow return prev_observation {self.prev_observation}"
+        )
         return self.prev_observation[observation_space.name]
-
 
     def fork(self):
         # There is a problem with forking.
         from copy import deepcopy
+
         # FIXME vi3: I don't know what is the proper way to fork a session.
         new_fork = deepcopy(self)
         return new_fork

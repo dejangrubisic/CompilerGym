@@ -10,26 +10,24 @@ to use the bazel build system. Usage:
 It is equivalent in behavior to the demo.py script in this directory.
 """
 import logging
+import os
+import pdb
+import pickle
+import sys
 from pathlib import Path
 from typing import Iterable
-import pdb
-# import gym
-import numpy as np
-import pickle
-import os
-import sys
-import loop_tool as lt
 
 import gym
+import loop_tool as lt
 
+# import gym
+import numpy as np
+from service.datasets import loop_tool_dataset
+from service.rewards import flops_reward, runtime_reward
+
+import compiler_gym
 from compiler_gym.datasets import Benchmark, Dataset
 from compiler_gym.datasets.uri import BenchmarkUri
-from compiler_gym.spaces import Reward
-from compiler_gym.util.logging import init_logging
-from compiler_gym.util.registration import register
-from compiler_gym.util.runfiles_path import runfiles_path, site_data_path
-from compiler_gym.service.connection import ServiceError
-
 from compiler_gym.envs.llvm.datasets import (
     AnghaBenchDataset,
     BlasDataset,
@@ -40,28 +38,24 @@ from compiler_gym.envs.llvm.datasets import (
     CsmithDataset,
     NPBDataset,
 )
-
-import loop_tool_service
-
-
-from service_py.datasets import loop_tool_dataset
-from service_py.rewards import runtime_reward, flops_reward
-
+from compiler_gym.service.connection import ServiceError
+from compiler_gym.spaces import Reward
+from compiler_gym.util.logging import init_logging
+from compiler_gym.util.registration import register
+from compiler_gym.util.runfiles_path import runfiles_path, site_data_path
 
 
 def register_env():
     register(
         id="loop_tool-v0",
-        entry_point=loop_tool_service.LoopToolCompilerEnv,
+        entry_point=compiler_gym.envs.loop_tool.LoopToolCompilerEnv,
         kwargs={
-            "service": loop_tool_service.paths.LOOP_TOOL_SERVICE_PY,
-            "rewards": [
-                runtime_reward.Reward(),
-                flops_reward.Reward()
-                ],
+            "service": compiler_gym.envs.loop_tool.paths.LOOP_TOOL_SERVICE_PY,
+            "rewards": [runtime_reward.Reward(), flops_reward.Reward()],
             "datasets": [
                 loop_tool_dataset.Dataset(),
-                CBenchDataset(site_data_path("llvm-v0"))],
+                CBenchDataset(site_data_path("llvm-v0")),
+            ],
         },
     )
 
@@ -71,9 +65,9 @@ def main():
     init_logging(level=logging.DEBUG)
     register_env()
 
-    actions = ["down", "down", "split_64", "down", "split_16",  "swap_down"]
+    actions = ["down", "down", "split_64", "down", "split_16", "swap_down"]
 
-    with loop_tool_service.make_env("loop_tool-v0") as env:
+    with compiler_gym.envs.loop_tool.make_env("loop_tool-v0") as env:
         for bench in env.datasets["benchmark://loop_tool_simple-v0"]:
             try:
                 env.reset(benchmark=bench)
@@ -82,7 +76,7 @@ def main():
                 print("AGENT: Timeout Error Reset")
                 continue
 
-            for a in actions:                
+            for a in actions:
                 try:
                     observation, reward, done, info = env.step(
                         action=env.action_space.from_string(a),
@@ -92,7 +86,6 @@ def main():
                 except ServiceError:
                     print("AGENT: Timeout Error Step")
                     continue
-            
 
                 print(f"{reward}\n")
                 print(f"{info}\n")
@@ -103,7 +96,6 @@ def main():
                     print(tensor.loop_tree)
                 except:
                     print(f"{observation}\n")
-
 
                 pdb.set_trace()
 

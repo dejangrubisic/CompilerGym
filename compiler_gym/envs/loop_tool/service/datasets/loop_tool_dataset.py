@@ -1,19 +1,19 @@
-from compiler_gym.datasets import Benchmark, BenchmarkUri, Dataset
-from compiler_gym.util.runfiles_path import site_data_path
-from compiler_gym.third_party import llvm
-from typing import Iterable
-import subprocess
-from pathlib import Path
 import pdb
+import subprocess
 import sys
-from loop_tool_service.paths import BENCHMARKS_PATH
+from pathlib import Path
+from typing import Iterable
 
+from compiler_gym.datasets import Benchmark, BenchmarkUri, Dataset
 from compiler_gym.envs.llvm.llvm_benchmark import get_system_library_flags
-from . import benchmark_from_file_contents
+from compiler_gym.envs.loop_tool.paths import BENCHMARKS_PATH
 from compiler_gym.service.proto import BenchmarkDynamicConfig, Command
+from compiler_gym.third_party import llvm
+from compiler_gym.util.runfiles_path import site_data_path
 
+from . import benchmark_from_file_contents
 
-BENCHMARKS_PATH = BENCHMARKS_PATH/"loop_tool_dataset/data"
+BENCHMARKS_PATH = BENCHMARKS_PATH / "loop_tool_dataset/data"
 
 
 class Dataset(Dataset):
@@ -26,31 +26,31 @@ class Dataset(Dataset):
         )
 
         benchmark_config = BenchmarkDynamicConfig(
-                    build_cmd=Command(
-                        # $CC is replaced with clang command,
-                        # $IN is replaced with benchmark path
-                        # Following are linking flags (only one in this case).
-                        argument=["$CC", "$IN"],
-                        timeout_seconds=60,
-                        outfile=["a.out"],
-                    ),
-                    run_cmd=Command(
-                        argument=["./a.out"],
-                        timeout_seconds=3000,
-                        infile=["a.out"],
-                    )
-                )
+            build_cmd=Command(
+                # $CC is replaced with clang command,
+                # $IN is replaced with benchmark path
+                # Following are linking flags (only one in this case).
+                argument=["$CC", "$IN"],
+                timeout_seconds=60,
+                outfile=["a.out"],
+            ),
+            run_cmd=Command(
+                argument=["./a.out"],
+                timeout_seconds=3000,
+                infile=["a.out"],
+            ),
+        )
 
         self._benchmarks = {
             "benchmark://loop_tool_simple-v0/mm": benchmark_from_file_contents(
                 "benchmark://loop_tool_simple-v0/mm",
-                self.preprocess(BENCHMARKS_PATH /"mm.txt"),
-                benchmark_config
+                self.preprocess(BENCHMARKS_PATH / "mm.txt"),
+                benchmark_config,
             ),
             "benchmark://loop_tool_simple-v0/conv": benchmark_from_file_contents(
                 "benchmark://loop_tool_simple-v0/conv",
-                self.preprocess(BENCHMARKS_PATH /"conv.txt"),
-                benchmark_config
+                self.preprocess(BENCHMARKS_PATH / "conv.txt"),
+                benchmark_config,
             ),
         }
 
@@ -60,7 +60,7 @@ class Dataset(Dataset):
 
     def __len__(self) -> int:
         return self.size
-        
+
     @staticmethod
     def preprocess(src: Path) -> str:
         """Front a C source through the compiler frontend."""

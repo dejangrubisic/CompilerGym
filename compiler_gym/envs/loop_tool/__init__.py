@@ -1,23 +1,22 @@
 """This module defines and registers the example gym environments."""
+import copy
+import logging
+import os
+import pdb
+import pickle
+import shutil
+import signal
+import sys
 from pathlib import Path
+from typing import List, Optional, Union, cast
 
-from compiler_gym.util.runfiles_path import runfiles_path, site_data_path
+import pandas as pd
 
 from compiler_gym.envs.compiler_env import CompilerEnv
+from compiler_gym.service.proto import CommandlineSpace, Space, proto_to_action_space
 from compiler_gym.spaces import Commandline, CommandlineFlag
-from compiler_gym.service.proto import Space, proto_to_action_space, CommandlineSpace
+from compiler_gym.util.runfiles_path import runfiles_path, site_data_path
 from compiler_gym.wrappers import CompilerEnvWrapper
-from typing import cast, List, Union, Optional
-import os
-import shutil
-import sys
-import logging
-import signal
-import pickle
-import pdb
-import pandas as pd
-import copy
-
 
 
 class LoopToolCompilerEnv(CompilerEnv):
@@ -27,7 +26,6 @@ class LoopToolCompilerEnv(CompilerEnv):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
 
 
 class LoopToolCompilerEnvWrapper(CompilerEnvWrapper):
@@ -42,16 +40,17 @@ class LoopToolCompilerEnvWrapper(CompilerEnvWrapper):
             print("Problem while registering the CTRL+C event")
             # FIXME: See what to do when multiple threads are running within the same process.
             import traceback
+
             traceback.print_exc()
 
     def step(  # pylint: disable=arguments-differ
         self,
         action,
-        seek = False,
-        observation_spaces = None,
-        reward_spaces = None,
-        observations = None,
-        rewards = None,
+        seek=False,
+        observation_spaces=None,
+        reward_spaces=None,
+        observations=None,
+        rewards=None,
     ):
         if observations is not None:
             logging.warn(
@@ -67,43 +66,48 @@ class LoopToolCompilerEnvWrapper(CompilerEnvWrapper):
                 category=DeprecationWarning,
             )
             reward_spaces = rewards
-        return self.multistep(  actions=[action], 
-                                seek=seek, 
-                                observation_spaces=observation_spaces, 
-                                reward_spaces=reward_spaces)
-
+        return self.multistep(
+            actions=[action],
+            seek=seek,
+            observation_spaces=observation_spaces,
+            reward_spaces=reward_spaces,
+        )
 
     def multistep(
-        self,
-        actions,
-        seek=False,
-        observation_spaces=None,
-        reward_spaces=None,
-        **kwargs
+        self, actions, seek=False, observation_spaces=None, reward_spaces=None, **kwargs
     ):
-        logging.info("*******  **************** Apply multi-step ***********************")
+        logging.info(
+            "*******  **************** Apply multi-step ***********************"
+        )
 
-        observation, reward, done, info = super().multistep(actions, observation_spaces, reward_spaces, **kwargs)
-        # Log only when you have 1 action 
-        if self.logging and len(actions) == 1 and observation:     
+        observation, reward, done, info = super().multistep(
+            actions, observation_spaces, reward_spaces, **kwargs
+        )
+        # Log only when you have 1 action
+        if self.logging and len(actions) == 1 and observation:
             # Log only if you have previous_observation
-            if type(self.prev_observation) != type(None) and info.get('action_had_no_effect') == False:
-                logging.critical(f"Action = {actions[0]}, No_effect = {info.get('action_had_no_effect')}, reward = {reward[0]}")
+            if (
+                type(self.prev_observation) != type(None)
+                and info.get("action_had_no_effect") == False
+            ):
+                logging.critical(
+                    f"Action = {actions[0]}, No_effect = {info.get('action_had_no_effect')}, reward = {reward[0]}"
+                )
                 self.log_list.append(
                     self.format_log(
                         benchmark_uri=str(self.env.benchmark.uri),
-                        observation_names = observation_spaces,
+                        observation_names=observation_spaces,
                         prev_observation=self.prev_observation,
-                        observation=observation,                        
+                        observation=observation,
                         action=self.env.action_space.names[actions[0]],
                         prev_actions=self.env.commandline(),
-                        reward=reward[0] if not isinstance(reward, float) else reward,                        
+                        reward=reward[0] if not isinstance(reward, float) else reward,
                     )
                 )
             self.prev_observation = copy.deepcopy(observation)
 
         if seek:
-            self.env.actions = self.env.actions[:-len(actions)]
+            self.env.actions = self.env.actions[: -len(actions)]
 
         return observation, reward, done, info
 
@@ -125,16 +129,17 @@ class LoopToolCompilerEnvWrapper(CompilerEnvWrapper):
     def create_log_dir(env_name):
         from datetime import datetime
 
-        root = os.getenv('LOOP_TOOL_ROOT')
+        root = os.getenv("LOOP_TOOL_ROOT")
         assert root
         timestamp = datetime.now().strftime("%Y-%m-%d/%H-%M-%S")
-        log_dir = "/".join([root, "results", "random-" + env_name, timestamp, str(os.getpid())])
+        log_dir = "/".join(
+            [root, "results", "random-" + env_name, timestamp, str(os.getpid())]
+        )
         os.makedirs(log_dir)
 
-        # Put executed command to the log 
+        # Put executed command to the log
         with open(log_dir + "/command.txt", "w") as txt:
             txt.write(" ".join(sys.argv))
-
 
         return log_dir
 
@@ -144,15 +149,15 @@ class LoopToolCompilerEnvWrapper(CompilerEnvWrapper):
 
     @staticmethod
     def format_log(
-        benchmark_uri: str, 
+        benchmark_uri: str,
         observation_names: list,
-        prev_observation: list, 
-        observation: list, 
-        action: str, 
-        prev_actions: str, 
-        reward: float,        
-        ):
-        
+        prev_observation: list,
+        observation: list,
+        action: str,
+        prev_actions: str,
+        reward: float,
+    ):
+
         prev_obs_ret = []
         obs_ret = []
         for i, obs_name in enumerate(observation_names):
@@ -164,16 +169,12 @@ class LoopToolCompilerEnvWrapper(CompilerEnvWrapper):
                 obs_ret.append(pickle.loads(observation[i]))
 
             else:
-                logging.critical(f"FormatLog doesn't recognize Observation Type: {obs_name}")
+                logging.critical(
+                    f"FormatLog doesn't recognize Observation Type: {obs_name}"
+                )
                 exit(1)
 
-        return [benchmark_uri,
-                prev_obs_ret,
-                obs_ret,
-                action,
-                prev_actions,
-                reward]
-
+        return [benchmark_uri, prev_obs_ret, obs_ret, action, prev_actions, reward]
 
     def log_to_file(self):
         if len(self.log_list) == 0:
@@ -181,23 +182,24 @@ class LoopToolCompilerEnvWrapper(CompilerEnvWrapper):
 
         log_path = self.create_log_dir(self.env.spec.id)
 
-        columns = ["BenchmarkName", "State", "NextState", "Action", "CommandLine", "Reward"]
-        df = pd.DataFrame(self.log_list, columns=columns) 
+        columns = [
+            "BenchmarkName",
+            "State",
+            "NextState",
+            "Action",
+            "CommandLine",
+            "Reward",
+        ]
+        df = pd.DataFrame(self.log_list, columns=columns)
         df.head()
-        with open(log_path + '/results.pkl', 'wb') as f:
+        with open(log_path + "/results.pkl", "wb") as f:
             pickle.dump(df, f)
-        
+
         print("\nResults written to: ", log_path + "/results.pkl\n")
         # Clear the content
         self.log_list.clear()
 
 
-
-
-
-from compiler_gym.util.registration import register
-from loop_tool_service.paths import LOOP_TOOL_SERVICE_PY
-from loop_tool_service.service_py.rewards import runtime_reward
 from compiler_gym.envs.llvm.datasets import (
     AnghaBenchDataset,
     BlasDataset,
@@ -208,18 +210,18 @@ from compiler_gym.envs.llvm.datasets import (
     CsmithDataset,
     NPBDataset,
 )
-
-
+from compiler_gym.envs.loop_tool.paths import LOOP_TOOL_SERVICE_PY
+from compiler_gym.envs.loop_tool.service.rewards import runtime_reward
+from compiler_gym.util.registration import register
 from compiler_gym.util.runfiles_path import site_data_path
 
 
 def make(id: str, **kwargs):
     """Equivalent to :code:`compiler_gym.make()`."""
     import compiler_gym
+
     return compiler_gym.make(id, **kwargs)
 
 
 def make_env(id, logging=False, **kwargs):
     return LoopToolCompilerEnvWrapper(make(id, **kwargs), logging=logging)
-
-
